@@ -6,7 +6,8 @@ import {
   isSignerWallet,
   SignerWallet,
 } from "../../../types/shared/evm";
-import { ExactEvmPayloadAuthorization, PaymentRequirements } from "../../../types/verify";
+import { PaymentRequirements } from "../../../types/verify";
+import { ExactEvmPayloadAuthorization } from "../../../types/verify/schemes/exact";
 
 /**
  * Signs an EIP-3009 authorization for USDC transfer

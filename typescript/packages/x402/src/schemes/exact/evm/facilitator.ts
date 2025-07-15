@@ -9,13 +9,13 @@ import {
   SignerWallet,
 } from "../../../types/shared/evm";
 import {
-  PaymentPayload,
   PaymentRequirements,
   SettleResponse,
   VerifyResponse,
   ExactEvmPayload,
 } from "../../../types/verify";
 import { SCHEME } from "../../exact";
+import { ExactPaymentPayload } from "../../../types/verify/schemes/exact";
 
 /**
  * Verifies a payment payload against the required payment details
@@ -39,7 +39,7 @@ export async function verify<
   account extends Account | undefined,
 >(
   client: ConnectedClient<transport, chain, account>,
-  payload: PaymentPayload,
+  payload: ExactPaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<VerifyResponse> {
   /* TODO: work with security team on brainstorming more verification steps
@@ -183,7 +183,7 @@ export async function verify<
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   wallet: SignerWallet<chain, transport>,
-  paymentPayload: PaymentPayload,
+  paymentPayload: ExactPaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<SettleResponse> {
   const payload = paymentPayload.payload as ExactEvmPayload;

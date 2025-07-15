@@ -15,6 +15,7 @@ import {
 } from "../types/verify";
 import { Chain, Transport, Account } from "viem";
 import { KeyPairSigner } from "@solana/kit";
+import { ExactPaymentPayloadSchema } from "../types/verify/schemes/exact";
 
 /**
  * Verifies a payment payload against the required payment details regardless of the scheme
@@ -36,6 +37,7 @@ export async function verify<
 ): Promise<VerifyResponse> {
   // exact scheme
   if (paymentRequirements.scheme === "exact") {
+    payload = ExactPaymentPayloadSchema.parse(payload);
     // evm
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
       return verifyExactEvm(
@@ -77,6 +79,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
 ): Promise<SettleResponse> {
   // exact scheme
   if (paymentRequirements.scheme === "exact") {
+    payload = ExactPaymentPayloadSchema.parse(payload);
     // evm
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
       return await settleExactEvm(

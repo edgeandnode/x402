@@ -2,9 +2,10 @@ import { safeBase64Encode, safeBase64Decode } from "../../../../shared";
 import { SupportedEVMNetworks, SupportedSVMNetworks } from "../../../../types";
 import {
   PaymentPayload,
-  PaymentPayloadSchema,
   ExactEvmPayload,
   ExactSvmPayload,
+  ExactPaymentPayload,
+  ExactPaymentPayloadSchema,
 } from "../../../../types/verify";
 
 /**
@@ -49,7 +50,7 @@ export function encodePayment(payment: PaymentPayload): string {
  * @param payment - The base64 encoded payment string to decode
  * @returns The decoded and validated PaymentPayload object
  */
-export function decodePayment(payment: string): PaymentPayload {
+export function decodePayment(payment: string): ExactPaymentPayload {
   const decoded = safeBase64Decode(payment);
   const parsed = JSON.parse(decoded);
 
@@ -73,6 +74,6 @@ export function decodePayment(payment: string): PaymentPayload {
     throw new Error("Invalid network");
   }
 
-  const validated = PaymentPayloadSchema.parse(obj);
+  const validated = ExactPaymentPayloadSchema.parse(obj);
   return validated;
 }
