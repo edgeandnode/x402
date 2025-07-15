@@ -3,7 +3,8 @@ import { getNetworkId } from "../../../shared";
 import { getVersion, getERC20Balance } from "../../../shared/evm";
 import {
   usdcABI as abi,
-  authorizationTypes,
+  typedDataTypes,
+  transferWithAuthorizationPrimaryType,
   config,
   ConnectedClient,
   SignerWallet,
@@ -84,8 +85,8 @@ export async function verify<
   }
   // Verify permit signature is recoverable for the owner address
   const permitTypedData = {
-    types: authorizationTypes,
-    primaryType: "TransferWithAuthorization" as const,
+    types: typedDataTypes,
+    primaryType: transferWithAuthorizationPrimaryType,
     domain: {
       name,
       version,

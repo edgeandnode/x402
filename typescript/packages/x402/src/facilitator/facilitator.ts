@@ -16,6 +16,7 @@ import {
 import { Chain, Transport, Account } from "viem";
 import { KeyPairSigner } from "@solana/kit";
 import { ExactPaymentPayloadSchema } from "../types/verify/schemes/exact";
+import { DeferredPaymentPayloadSchema } from "../types/verify/schemes/deferred";
 
 /**
  * Verifies a payment payload against the required payment details regardless of the scheme
@@ -53,7 +54,24 @@ export async function verify<
     }
   }
 
+<<<<<<< HEAD
   // unsupported scheme
+=======
+  if (paymentRequirements.scheme == "deferred") {
+    payload = DeferredPaymentPayloadSchema.parse(payload);
+    if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
+      const valid = await verifyDeferred(client, payload, paymentRequirements);
+      return valid;
+    } else {
+      return {
+        isValid: false,
+        invalidReason: "invalid_scheme",
+        payer: payload.payload.voucher.buyer,
+      };
+    }
+  }
+
+>>>>>>> 69d9ed0 (wip: implement deferred scheme)
   return {
     isValid: false,
     invalidReason: "invalid_scheme",

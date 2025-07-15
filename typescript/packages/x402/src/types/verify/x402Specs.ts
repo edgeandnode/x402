@@ -8,6 +8,11 @@ import {
   ExactPaymentPayloadSchema,
   UnsignedExactPaymentPayloadSchema,
 } from "./schemes/exact";
+import {
+  DeferredErrorReasons,
+  DeferredPaymentPayloadSchema,
+  UnsignedDeferredPaymentPayloadSchema,
+} from "./schemes/deferred";
 
 // Enums
 export const schemes = ["exact", "deferred"] as const;
@@ -28,6 +33,7 @@ export const ErrorReasons = [
   "unexpected_settle_error",
   "unexpected_verify_error",
   ...ExactErrorReasons,
+  ...DeferredErrorReasons,
 ] as const;
 
 // x402PaymentRequirements
@@ -52,10 +58,14 @@ export const PaymentRequirementsSchema = z.object({
 export type PaymentRequirements = z.infer<typeof PaymentRequirementsSchema>;
 
 // x402PaymentPayload
-export const PaymentPayloadSchema = z.discriminatedUnion("scheme", [ExactPaymentPayloadSchema]);
+export const PaymentPayloadSchema = z.discriminatedUnion("scheme", [
+  ExactPaymentPayloadSchema,
+  DeferredPaymentPayloadSchema,
+]);
 export type PaymentPayload = z.infer<typeof PaymentPayloadSchema>;
 export const UnsignedPaymentPayloadSchema = z.discriminatedUnion("scheme", [
   UnsignedExactPaymentPayloadSchema,
+  UnsignedDeferredPaymentPayloadSchema,
 ]);
 export type UnsignedPaymentPayload = z.infer<typeof UnsignedPaymentPayloadSchema>;
 
