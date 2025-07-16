@@ -1,12 +1,18 @@
-import { Address, Chain, LocalAccount, Transport } from "viem";
+import { Address, Chain, Hex, LocalAccount, Transport } from "viem";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements } from "../../../types/verify";
-import { createNonce, signAuthorization } from "./sign";
+import { signVoucher, verifyVoucher } from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
 import {
-  ExactPaymentPayload,
-  UnsignedExactPaymentPayload,
-} from "../../../types/verify/schemes/exact";
+  DeferredEvmPayloadVoucher,
+  DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
+  DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
+  DeferredEvmPaymentRequirements,
+  DeferredEvmPaymentRequirementsSchema,
+  DeferredPaymentPayload,
+  UnsignedDeferredPaymentPayload,
+} from "../../../types/verify/schemes/deferred";
+import { getNetworkId } from "../../../shared/network";
 
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
@@ -16,35 +22,92 @@ import {
  * @param paymentRequirements - The payment requirements containing scheme and network information
  * @returns An unsigned payment payload containing authorization details
  */
-export function preparePaymentHeader(
+export async function preparePaymentHeader(
   from: Address,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
-): UnsignedExactPaymentPayload {
-  const nonce = createNonce();
+): Promise<UnsignedDeferredPaymentPayload> {
+  const deferredPaymentRequirements =
+    DeferredEvmPaymentRequirementsSchema.parse(paymentRequirements);
 
-  const validAfter = BigInt(
-    Math.floor(Date.now() / 1000) - 600, // 10 minutes before
-  ).toString();
-  const validBefore = BigInt(
-    Math.floor(Date.now() / 1000 + paymentRequirements.maxTimeoutSeconds),
-  ).toString();
+  const voucher =
+    deferredPaymentRequirements.extra.type === "new"
+      ? createNewVoucher(from, deferredPaymentRequirements)
+      : await aggregateVoucher(from, deferredPaymentRequirements);
 
   return {
     x402Version,
-    scheme: "exact",
+    scheme: "deferred",
     network: paymentRequirements.network,
     payload: {
       signature: undefined,
-      authorization: {
-        from,
-        to: paymentRequirements.payTo as Address,
-        value: paymentRequirements.maxAmountRequired,
-        validAfter: validAfter.toString(),
-        validBefore: validBefore.toString(),
-        nonce,
-      },
+      voucher: voucher,
     },
+  };
+}
+
+/**
+ * Creates a new voucher with the given payment requirements
+ *
+ * @param from - The sender's address from which the payment will be made
+ * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @returns The new voucher
+ */
+export function createNewVoucher(
+  from: Address,
+  paymentRequirements: DeferredEvmPaymentRequirements,
+): DeferredEvmPayloadVoucher {
+  const extra = DeferredEvmPaymentRequirementsExtraNewVoucherSchema.parse(
+    paymentRequirements.extra,
+  );
+
+  return {
+    id: extra.voucher.id,
+    buyer: from,
+    seller: paymentRequirements.payTo,
+    value: paymentRequirements.maxAmountRequired,
+    asset: paymentRequirements.asset,
+    timestamp: Math.floor(Date.now() / 1000),
+    nonce: 0,
+    escrow: extra.voucher.escrow,
+    chainId: getNetworkId(paymentRequirements.network),
+  };
+}
+
+/**
+ * Aggregates a voucher with new payment requirements
+ *
+ * @param from - The sender's address from which the payment will be made
+ * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @returns The aggregated voucher
+ */
+export async function aggregateVoucher(
+  from: Address,
+  paymentRequirements: DeferredEvmPaymentRequirements,
+): Promise<DeferredEvmPayloadVoucher> {
+  const extra = DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema.parse(
+    paymentRequirements.extra,
+  );
+
+  // verify signature is valid and the voucher's buyer is the client
+  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, from);
+  if (!isValid) {
+    throw new Error("Invalid voucher signature");
+  }
+
+  const { id, escrow, buyer, seller, value, asset, nonce, chainId } = extra.voucher;
+  const newTimestamp = Math.floor(Date.now() / 1000);
+
+  return {
+    id,
+    buyer,
+    seller,
+    value: (BigInt(paymentRequirements.maxAmountRequired) + BigInt(value)).toString(),
+    asset,
+    timestamp: newTimestamp,
+    nonce: nonce + 1,
+    escrow,
+    chainId,
   };
 }
 
@@ -52,20 +115,14 @@ export function preparePaymentHeader(
  * Signs a payment header using the provided client and payment requirements.
  *
  * @param client - The signer wallet instance used to sign the payment header
- * @param paymentRequirements - The payment requirements containing scheme and network information
  * @param unsignedPaymentHeader - The unsigned payment payload to be signed
  * @returns A promise that resolves to the signed payment payload
  */
 export async function signPaymentHeader<transport extends Transport, chain extends Chain>(
   client: SignerWallet<chain, transport> | LocalAccount,
-  paymentRequirements: PaymentRequirements,
-  unsignedPaymentHeader: UnsignedExactPaymentPayload,
-): Promise<ExactPaymentPayload> {
-  const { signature } = await signAuthorization(
-    client,
-    unsignedPaymentHeader.payload.authorization,
-    paymentRequirements,
-  );
+  unsignedPaymentHeader: UnsignedDeferredPaymentPayload,
+): Promise<DeferredPaymentPayload> {
+  const { signature } = await signVoucher(client, unsignedPaymentHeader.payload.voucher);
 
   return {
     ...unsignedPaymentHeader,
@@ -88,10 +145,10 @@ export async function createPayment<transport extends Transport, chain extends C
   client: SignerWallet<chain, transport> | LocalAccount,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
-): Promise<ExactPaymentPayload> {
+): Promise<DeferredPaymentPayload> {
   const from = isSignerWallet(client) ? client.account!.address : client.address;
-  const unsignedPaymentHeader = preparePaymentHeader(from, x402Version, paymentRequirements);
-  return signPaymentHeader(client, paymentRequirements, unsignedPaymentHeader);
+  const unsignedPaymentHeader = await preparePaymentHeader(from, x402Version, paymentRequirements);
+  return signPaymentHeader(client, unsignedPaymentHeader);
 }
 
 /**

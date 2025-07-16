@@ -1,6 +1,7 @@
 import { createPaymentHeader as createPaymentHeaderExactEVM } from "../schemes/exact/evm/client";
 import { createPaymentHeader as createPaymentHeaderExactSVM } from "../schemes/exact/svm/client";
 import { isEvmSignerWallet, isMultiNetworkSigner, isSvmSignerWallet, MultiNetworkSigner, Signer, SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
+import { createPaymentHeader as createPaymentHeaderDeferredEVM } from "../schemes/deferred/evm/client";
 import { PaymentRequirements } from "../types/verify";
 
 /**
@@ -47,5 +48,14 @@ export async function createPaymentHeader(
     }
     throw new Error("Unsupported network");
   }
+
+  // deferred scheme
+  if (
+    paymentRequirements.scheme === "deferred" &&
+    SupportedEVMNetworks.includes(paymentRequirements.network)
+  ) {
+    return await createPaymentHeaderDeferredEVM(client, x402Version, paymentRequirements);
+  }
+
   throw new Error("Unsupported scheme");
 }

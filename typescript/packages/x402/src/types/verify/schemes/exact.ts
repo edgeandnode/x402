@@ -6,8 +6,9 @@ import {
   EvmMaxAtomicUnits,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
-import { NetworkSchema, x402Versions } from "../..";
 import { Base64EncodedRegex } from "../../../shared";
+import { NetworkSchema } from "../../shared";
+import { x402Versions } from "../versions";
 
 export const ExactErrorReasons = [
   "invalid_exact_evm_payload_authorization_valid_after",
@@ -39,6 +40,8 @@ export const ExactErrorReasons = [
   "invalid_exact_svm_payload_transaction_sender_ata_not_found",
   "invalid_exact_svm_payload_transaction_simulation_failed",
   "invalid_exact_svm_payload_transaction_transfer_to_incorrect_ata",
+  "settle_exact_svm_block_height_exceeded",
+  "settle_exact_svm_transaction_confirmation_timed_out",
 ] as const;
 
 // x402ExactEvmPayloadAuthorization

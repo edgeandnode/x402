@@ -1,8 +1,8 @@
 import { safeBase64Encode, safeBase64Decode } from "../../../../shared";
 import {
-  ExactPaymentPayload,
-  ExactPaymentPayloadSchema,
-} from "../../../../types/verify/schemes/exact";
+  DeferredPaymentPayload,
+  DeferredPaymentPayloadSchema,
+} from "../../../../types/verify/schemes/deferred";
 
 /**
  * Encodes a payment payload into a base64 string, ensuring bigint values are properly stringified
@@ -10,13 +10,13 @@ import {
  * @param payment - The payment payload to encode
  * @returns A base64 encoded string representation of the payment payload
  */
-export function encodePayment(payment: ExactPaymentPayload): string {
+export function encodePayment(payment: DeferredPaymentPayload): string {
   const safe = {
     ...payment,
     payload: {
       ...payment.payload,
-      authorization: Object.fromEntries(
-        Object.entries(payment.payload.authorization).map(([key, value]) => [
+      voucher: Object.fromEntries(
+        Object.entries(payment.payload.voucher).map(([key, value]) => [
           key,
           typeof value === "bigint" ? (value as bigint).toString() : value,
         ]),
@@ -32,7 +32,7 @@ export function encodePayment(payment: ExactPaymentPayload): string {
  * @param payment - The base64 encoded payment string to decode
  * @returns The decoded and validated PaymentPayload object
  */
-export function decodePayment(payment: string): ExactPaymentPayload {
+export function decodePayment(payment: string): DeferredPaymentPayload {
   const decoded = safeBase64Decode(payment);
   const parsed = JSON.parse(decoded);
 
@@ -40,15 +40,12 @@ export function decodePayment(payment: string): ExactPaymentPayload {
     ...parsed,
     payload: {
       signature: parsed.payload.signature,
-      authorization: {
-        ...parsed.payload.authorization,
-        value: parsed.payload.authorization.value,
-        validAfter: parsed.payload.authorization.validAfter,
-        validBefore: parsed.payload.authorization.validBefore,
+      voucher: {
+        ...parsed.payload.voucher,
       },
     },
   };
 
-  const validated = ExactPaymentPayloadSchema.parse(obj);
+  const validated = DeferredPaymentPayloadSchema.parse(obj);
   return validated;
 }

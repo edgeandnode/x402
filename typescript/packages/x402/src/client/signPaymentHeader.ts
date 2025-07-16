@@ -1,7 +1,10 @@
 import { signPaymentHeader as signPaymentHeaderExactEVM } from "../schemes/exact/evm/client";
-import { encodePayment } from "../schemes/exact/evm/utils/paymentUtils";
 import { isEvmSignerWallet, isMultiNetworkSigner, MultiNetworkSigner, Signer, SupportedEVMNetworks } from "../types/shared";
+import { signPaymentHeader as signPaymentHeaderDeferredEVM } from "../schemes/deferred/evm/client";
+import { encodePayment as encodePaymentExactEVM } from "../schemes/exact/evm/utils/paymentUtils";
+import { encodePayment as encodePaymentDeferredEVM } from "../schemes/deferred/evm/utils/paymentUtils";
 import { PaymentRequirements, UnsignedPaymentPayload } from "../types/verify";
+import { UnsignedDeferredPaymentPayloadSchema } from "../types/verify/schemes/deferred";
 import { UnsignedExactPaymentPayloadSchema } from "../types/verify/schemes/exact";
 
 /**
@@ -28,7 +31,16 @@ export async function signPaymentHeader(
     }
     unsignedPaymentHeader = UnsignedExactPaymentPayloadSchema.parse(unsignedPaymentHeader);
     const signedPaymentHeader = await signPaymentHeaderExactEVM(client, paymentRequirements, unsignedPaymentHeader);
-    return encodePayment(signedPaymentHeader);
+    return encodePaymentExactEVM(signedPaymentHeader);
+  }
+
+  if (
+    paymentRequirements.scheme === "deferred" &&
+    SupportedEVMNetworks.includes(paymentRequirements.network)
+  ) {
+    unsignedPaymentHeader = UnsignedDeferredPaymentPayloadSchema.parse(unsignedPaymentHeader);
+    const signedPaymentHeader = await signPaymentHeaderDeferredEVM(client, unsignedPaymentHeader);
+    return encodePaymentDeferredEVM(signedPaymentHeader);
   }
 
   throw new Error("Unsupported scheme");

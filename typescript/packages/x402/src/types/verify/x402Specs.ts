@@ -13,10 +13,10 @@ import {
   DeferredPaymentPayloadSchema,
   UnsignedDeferredPaymentPayloadSchema,
 } from "./schemes/deferred";
+import { x402Versions } from "./versions";
 
 // Enums
 export const schemes = ["exact", "deferred"] as const;
-export const x402Versions = [1] as const;
 export const ErrorReasons = [
   "insufficient_funds",
   "invalid_network",

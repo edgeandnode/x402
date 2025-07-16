@@ -1,36 +1,47 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSignerSepolia, SignerWallet } from "../../../types/shared/evm";
-import { PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
+import { createSigner } from "../../../types/shared/evm";
+import { PaymentRequirements } from "../../../types/verify";
 import { createPaymentHeader, preparePaymentHeader, signPaymentHeader } from "./client";
-import { signAuthorization } from "./sign";
+import {
+  DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
+  DeferredEvmPaymentRequirementsSchema,
+  UnsignedDeferredPaymentPayload,
+} from "../../../types/verify/schemes/deferred";
 import { encodePayment } from "./utils/paymentUtils";
-
-vi.mock("./sign", async () => {
-  const actual = await vi.importActual("./sign");
-  return {
-    ...actual,
-    signAuthorization: vi.fn(),
-  };
-});
 
 vi.mock("./utils/paymentUtils", () => ({
   encodePayment: vi.fn().mockReturnValue("encoded-payment-header"),
 }));
 
-describe("preparePaymentHeader", () => {
+const buyer = createSigner(
+  "base-sepolia",
+  "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+);
+const buyerAddress = buyer.account.address;
+const sellerAddress = "0x1234567890123456789012345678901234567890";
+const escrowAddress = "0xffffff12345678901234567890123456789fffff";
+const assetAddress = "0x1111111111111111111111111111111111111111";
+const voucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
+
+describe("preparePaymentHeader: new voucher", () => {
   const mockPaymentRequirements: PaymentRequirements = {
-    scheme: "exact",
+    scheme: "deferred",
     network: "base-sepolia",
     maxAmountRequired: "1000000",
     resource: "https://example.com/resource",
     description: "Test resource",
     mimeType: "application/json",
-    payTo: "0x1234567890123456789012345678901234567890",
+    payTo: sellerAddress,
     maxTimeoutSeconds: 300,
-    asset: "0x1234567890123456789012345678901234567890",
+    asset: assetAddress,
+    extra: {
+      type: "new",
+      voucher: {
+        id: voucherId,
+        escrow: escrowAddress,
+      },
+    },
   };
-
-  const mockFromAddress = "0xabcdef1234567890123456789012345678901234";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -43,204 +54,308 @@ describe("preparePaymentHeader", () => {
     vi.useRealTimers();
   });
 
-  it("should create a valid unsigned payment header", () => {
-    const result = preparePaymentHeader(mockFromAddress, 1, mockPaymentRequirements);
-    const currentTime = Math.floor(Date.now() / 1000);
+  it("should create a valid unsigned payment header", async () => {
+    const paymentHeader = await preparePaymentHeader(buyerAddress, 1, mockPaymentRequirements);
 
-    expect(result).toEqual({
+    const parsedPaymentRequirements =
+      DeferredEvmPaymentRequirementsSchema.parse(mockPaymentRequirements);
+
+    expect(paymentHeader).toEqual({
       x402Version: 1,
-      scheme: "exact",
+      scheme: "deferred",
       network: "base-sepolia",
       payload: {
         signature: undefined,
-        authorization: {
-          from: mockFromAddress,
-          to: mockPaymentRequirements.payTo,
-          value: mockPaymentRequirements.maxAmountRequired,
-          validAfter: (currentTime - 600).toString(),
-          validBefore: (currentTime + mockPaymentRequirements.maxTimeoutSeconds).toString(),
-          nonce: expect.any(String),
+        voucher: {
+          id: voucherId,
+          buyer: buyerAddress,
+          seller: sellerAddress,
+          value: parsedPaymentRequirements.maxAmountRequired,
+          asset: assetAddress,
+          timestamp: expect.any(Number),
+          nonce: 0,
+          escrow: escrowAddress,
+          chainId: 84532,
         },
       },
     });
   });
 
-  it("should generate a unique nonce for each call", () => {
-    const result1 = preparePaymentHeader(mockFromAddress, 1, mockPaymentRequirements);
-    const result2 = preparePaymentHeader(mockFromAddress, 1, mockPaymentRequirements);
-
-    expect(result1.payload.authorization.nonce.length).toBe(66);
-    expect(result2.payload.authorization.nonce.length).toBe(66);
-    expect(result1.payload.authorization.nonce).not.toBe(result2.payload.authorization.nonce);
+  it("should revert if paymentRequirement.extra required fields are missing", async () => {
+    const requiredFields = ["id", "escrow"];
+    for (const field of requiredFields) {
+      const badPaymentRequirements = structuredClone(mockPaymentRequirements);
+      delete badPaymentRequirements.extra!.voucher[field];
+      await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
+    }
   });
 
-  it("should calculate validAfter as 60 seconds before current time", () => {
-    const result = preparePaymentHeader(mockFromAddress, 1, mockPaymentRequirements);
-    const currentTime = Math.floor(Date.now() / 1000);
-    const validAfter = parseInt(result.payload.authorization.validAfter);
-
-    expect(validAfter).toBe(currentTime - 600);
+  it("should revert if paymentRequirement.extra required fields have invalid values", async () => {
+    const requiredFields = ["id", "escrow"];
+    for (const field of requiredFields) {
+      const badPaymentRequirements = structuredClone(mockPaymentRequirements);
+      badPaymentRequirements.extra!.voucher[field] = "0x";
+      await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
+    }
   });
 
-  it("should calculate validBefore as current time plus maxTimeoutSeconds", () => {
-    const result = preparePaymentHeader(mockFromAddress, 1, mockPaymentRequirements);
-    const currentTime = Math.floor(Date.now() / 1000);
-    const validBefore = parseInt(result.payload.authorization.validBefore);
+  it("should handle different x402 versions", async () => {
+    const result = await preparePaymentHeader(buyerAddress, 2, mockPaymentRequirements);
+    expect(result.x402Version).toBe(2);
+  });
+});
 
-    expect(validBefore).toBe(currentTime + mockPaymentRequirements.maxTimeoutSeconds);
+describe("preparePaymentHeader: aggregated voucher", () => {
+  const mockAggregatedPaymentRequirements: PaymentRequirements = {
+    scheme: "deferred",
+    network: "base-sepolia",
+    maxAmountRequired: "1000000",
+    resource: "https://example.com/resource",
+    description: "Test resource",
+    mimeType: "application/json",
+    payTo: sellerAddress,
+    maxTimeoutSeconds: 300,
+    asset: assetAddress,
+    extra: {
+      type: "aggregation",
+      signature:
+        "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c",
+      voucher: {
+        id: voucherId,
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        value: "1000000",
+        asset: assetAddress,
+        timestamp: 1715769600,
+        nonce: 0,
+        escrow: escrowAddress,
+        chainId: 84532,
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Set a fixed time for consistent testing
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+    vi.clearAllMocks();
   });
 
-  it("should handle different x402 versions", () => {
-    const result = preparePaymentHeader(mockFromAddress, 2, mockPaymentRequirements);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should create a valid unsigned payment header", async () => {
+    const paymentHeader = await preparePaymentHeader(
+      buyerAddress,
+      1,
+      mockAggregatedPaymentRequirements,
+    );
+
+    const parsedExtra = DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema.parse(
+      mockAggregatedPaymentRequirements.extra,
+    );
+
+    expect(paymentHeader).toEqual({
+      x402Version: 1,
+      scheme: "deferred",
+      network: "base-sepolia",
+      payload: {
+        signature: undefined,
+        voucher: {
+          id: voucherId,
+          buyer: buyerAddress,
+          seller: sellerAddress,
+          value: (
+            BigInt(mockAggregatedPaymentRequirements.maxAmountRequired) +
+            BigInt(parsedExtra.voucher.value)
+          ).toString(),
+          asset: assetAddress,
+          timestamp: expect.any(Number),
+          nonce: 1,
+          escrow: escrowAddress,
+          chainId: 84532,
+        },
+      },
+    });
+  });
+
+  it("should revert if voucher signature is invalid", async () => {
+    // Inject incorrect signature into mockAggregatedPaymentRequirements
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    paymentRequirements.extra!.signature =
+      "0x79ce97f6d1242aa7b6f4826efb553ed453fd6c7132c665d95bc226d5f3027dd5456d61ed1bd8da5de6cea4d8154070ff458300b6b84e0c9010f434af77ad3d291c";
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Invalid voucher signature",
+    );
+  });
+
+  it("should revert if paymentRequirement.extra required fields are missing", async () => {
+    const requiredFields = [
+      "id",
+      "buyer",
+      "seller",
+      "value",
+      "asset",
+      "timestamp",
+      "nonce",
+      "escrow",
+      "chainId",
+    ];
+    for (const field of requiredFields) {
+      const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+      delete badPaymentRequirements.extra!.voucher[field];
+      await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
+    }
+  });
+
+  it("should revert if paymentRequirement.extra required fields have invalid values", async () => {
+    const requiredFields = [
+      "id",
+      "buyer",
+      "seller",
+      "value",
+      "asset",
+      "timestamp",
+      "nonce",
+      "escrow",
+      "chainId",
+    ];
+    for (const field of requiredFields) {
+      const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+      badPaymentRequirements.extra!.voucher[field] = "0x";
+      await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
+    }
+  });
+
+  it("should handle different x402 versions", async () => {
+    const result = await preparePaymentHeader(buyerAddress, 2, mockAggregatedPaymentRequirements);
     expect(result.x402Version).toBe(2);
   });
 });
 
 describe("signPaymentHeader", () => {
-  const mockPaymentRequirements: PaymentRequirements = {
-    scheme: "exact",
-    network: "base-sepolia",
-    maxAmountRequired: "1000000",
-    resource: "https://example.com/resource",
-    description: "Test resource",
-    mimeType: "application/json",
-    payTo: "0x1234567890123456789012345678901234567890",
-    maxTimeoutSeconds: 300,
-    asset: "0x1234567890123456789012345678901234567890",
-  };
-
-  const mockUnsignedHeader: UnsignedPaymentPayload = {
+  const mockUnsignedHeader: UnsignedDeferredPaymentPayload = {
     x402Version: 1,
-    scheme: "exact",
+    scheme: "deferred",
     network: "base-sepolia",
     payload: {
       signature: undefined,
-      authorization: {
-        from: "0xabcdef1234567890123456789012345678901234",
-        to: "0x1234567890123456789012345678901234567890",
+      voucher: {
+        id: voucherId,
+        buyer: buyerAddress,
+        seller: sellerAddress,
         value: "1000000",
-        validAfter: "1704067195",
-        validBefore: "1704067495",
-        nonce: "1234567890",
+        asset: assetAddress,
+        timestamp: 1715769600,
+        nonce: 0,
+        escrow: escrowAddress,
+        chainId: 84532,
       },
     },
   };
-
-  const mockSignature = "0x1234567890123456789012345678901234567890123456789012345678901234";
-
-  const createTestClient = () => {
-    return createSignerSepolia(
-      "0x1234567890123456789012345678901234567890123456789012345678901234",
-    );
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(signAuthorization).mockResolvedValue({ signature: mockSignature });
-  });
+  const mockVoucherSignature =
+    "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c";
 
   it("should sign the payment header and return a complete payload", async () => {
-    const client = createTestClient();
-    const result = await signPaymentHeader(client, mockPaymentRequirements, mockUnsignedHeader);
+    const signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
 
-    expect(signAuthorization).toHaveBeenCalledWith(
-      client,
-      mockUnsignedHeader.payload.authorization,
-      mockPaymentRequirements,
-    );
-
-    expect(result).toEqual({
+    expect(signedPaymentPayload).toEqual({
       ...mockUnsignedHeader,
       payload: {
         ...mockUnsignedHeader.payload,
-        signature: mockSignature,
+        signature: mockVoucherSignature,
       },
     });
   });
 
   it("should preserve all original fields in the signed payload", async () => {
-    const client = createTestClient();
-    const result = await signPaymentHeader(client, mockPaymentRequirements, mockUnsignedHeader);
+    const signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
 
     // Check that all original fields are preserved
-    expect(result.x402Version).toBe(mockUnsignedHeader.x402Version);
-    expect(result.scheme).toBe(mockUnsignedHeader.scheme);
-    expect(result.network).toBe(mockUnsignedHeader.network);
-    expect(result.payload.authorization).toEqual(mockUnsignedHeader.payload.authorization);
+    expect(signedPaymentPayload.x402Version).toBe(mockUnsignedHeader.x402Version);
+    expect(signedPaymentPayload.scheme).toBe(mockUnsignedHeader.scheme);
+    expect(signedPaymentPayload.network).toBe(mockUnsignedHeader.network);
+    expect(signedPaymentPayload.payload.voucher).toEqual(mockUnsignedHeader.payload.voucher);
   });
 
   it("should throw an error if signing fails", async () => {
-    const client = createTestClient();
-    const error = new Error("Signing failed");
-    vi.mocked(signAuthorization).mockRejectedValue(error);
-
-    await expect(
-      signPaymentHeader(client, mockPaymentRequirements, mockUnsignedHeader),
-    ).rejects.toThrow("Signing failed");
+    const badUnsignedHeader = {} as UnsignedDeferredPaymentPayload;
+    await expect(signPaymentHeader(buyer, badUnsignedHeader)).rejects.toThrow();
   });
 });
 
 describe("createPaymentHeader", () => {
   const mockPaymentRequirements: PaymentRequirements = {
-    scheme: "exact",
+    scheme: "deferred",
     network: "base-sepolia",
     maxAmountRequired: "1000000",
     resource: "https://example.com/resource",
     description: "Test resource",
     mimeType: "application/json",
-    payTo: "0x1234567890123456789012345678901234567890",
+    payTo: sellerAddress,
     maxTimeoutSeconds: 300,
-    asset: "0x1234567890123456789012345678901234567890",
-  };
-
-  const mockSignedPayment = {
-    x402Version: 1,
-    scheme: "exact",
-    network: "base-sepolia",
-    payload: {
+    asset: assetAddress,
+    extra: {
+      type: "aggregation",
       signature:
-        "0x1234567890123456789012345678901234567890123456789012345678901234" as `0x${string}`,
-      authorization: {
-        from: "0xabcdef1234567890123456789012345678901234" as `0x${string}`,
-        to: "0x1234567890123456789012345678901234567890" as `0x${string}`,
+        "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c",
+      voucher: {
+        id: voucherId,
+        buyer: buyerAddress,
+        seller: sellerAddress,
         value: "1000000",
-        validAfter: "1704067195",
-        validBefore: "1704067495",
-        nonce: "1234567890",
+        asset: assetAddress,
+        timestamp: 1715769600,
+        nonce: 0,
+        escrow: escrowAddress,
+        chainId: 84532,
       },
     },
   };
 
-  const createTestClient = () => {
-    const client = createSignerSepolia(
-      "0x1234567890123456789012345678901234567890123456789012345678901234" as `0x${string}`,
-    );
-    return client as unknown as SignerWallet;
+  const mockSignedPayment = {
+    x402Version: 1,
+    scheme: "deferred",
+    network: "base-sepolia",
+    payload: {
+      signature:
+        "0x583c4822217a0a8d9f079800a4abf48ea4f366438181cf24a53a95567e1430442d3c8974edbd0b9d3d9c0d1231c6bbf837848986a7157f7f6056e2f6d4d7433a1b",
+      voucher: {
+        id: voucherId,
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        value: "2000000",
+        asset: assetAddress,
+        timestamp: 1715769600,
+        nonce: 1,
+        escrow: escrowAddress,
+        chainId: 84532,
+      },
+    },
   };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(signAuthorization).mockResolvedValue({
-      signature: mockSignedPayment.payload.signature,
-    });
-  });
-
   it("should create and encode a payment header", async () => {
-    const client = createTestClient();
-    const result = await createPaymentHeader(client, 1, mockPaymentRequirements);
-
+    const result = await createPaymentHeader(buyer, 1, mockPaymentRequirements);
     expect(result).toBe("encoded-payment-header");
     expect(vi.mocked(encodePayment)).toHaveBeenCalledWith(
       expect.objectContaining({
         x402Version: 1,
-        scheme: "exact",
+        scheme: "deferred",
         network: "base-sepolia",
         payload: expect.objectContaining({
-          signature: mockSignedPayment.payload.signature,
-          authorization: expect.objectContaining({
-            from: client.account!.address,
-            to: mockPaymentRequirements.payTo,
-            value: mockPaymentRequirements.maxAmountRequired,
+          signature: expect.any(String),
+          voucher: expect.objectContaining({
+            id: mockSignedPayment.payload.voucher.id,
+            buyer: mockSignedPayment.payload.voucher.buyer,
+            seller: mockSignedPayment.payload.voucher.seller,
+            value: mockSignedPayment.payload.voucher.value,
+            asset: mockSignedPayment.payload.voucher.asset,
+            timestamp: expect.any(Number),
+            nonce: mockSignedPayment.payload.voucher.nonce,
+            escrow: mockSignedPayment.payload.voucher.escrow,
+            chainId: mockSignedPayment.payload.voucher.chainId,
           }),
         }),
       }),
@@ -248,8 +363,7 @@ describe("createPaymentHeader", () => {
   });
 
   it("should handle different x402 versions", async () => {
-    const client = createTestClient();
-    await createPaymentHeader(client, 2, mockPaymentRequirements);
+    await createPaymentHeader(buyer, 2, mockPaymentRequirements);
 
     expect(vi.mocked(encodePayment)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -259,23 +373,16 @@ describe("createPaymentHeader", () => {
   });
 
   it("should throw an error if signing fails", async () => {
-    const client = createTestClient();
-    const error = new Error("Signing failed");
-    vi.mocked(signAuthorization).mockRejectedValue(error);
-
-    await expect(createPaymentHeader(client, 1, mockPaymentRequirements)).rejects.toThrow(
-      "Signing failed",
-    );
+    await expect(createPaymentHeader(buyer, 1, {} as PaymentRequirements)).rejects.toThrow();
   });
 
   it("should throw an error if encoding fails", async () => {
-    const client = createTestClient();
     const error = new Error("Encoding failed");
     vi.mocked(encodePayment).mockImplementation(() => {
       throw error;
     });
 
-    await expect(createPaymentHeader(client, 1, mockPaymentRequirements)).rejects.toThrow(
+    await expect(createPaymentHeader(buyer, 1, mockPaymentRequirements)).rejects.toThrow(
       "Encoding failed",
     );
   });

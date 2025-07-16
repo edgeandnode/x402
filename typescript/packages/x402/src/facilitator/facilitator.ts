@@ -1,5 +1,6 @@
 import { verify as verifyExactEvm, settle as settleExactEvm } from "../schemes/exact/evm";
 import { verify as verifyExactSvm, settle as settleExactSvm } from "../schemes/exact/svm";
+import { verify as verifyDeferred, settle as settleDeferred } from "../schemes/deferred/evm";
 import { SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
 import {
   ConnectedClient as EvmConnectedClient,
@@ -54,9 +55,7 @@ export async function verify<
     }
   }
 
-<<<<<<< HEAD
-  // unsupported scheme
-=======
+  // deferred scheme
   if (paymentRequirements.scheme == "deferred") {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
@@ -71,7 +70,7 @@ export async function verify<
     }
   }
 
->>>>>>> 69d9ed0 (wip: implement deferred scheme)
+  // unsupported scheme
   return {
     isValid: false,
     invalidReason: "invalid_scheme",
@@ -110,6 +109,21 @@ export async function settle<transport extends Transport, chain extends Chain>(
     // svm
     if (SupportedSVMNetworks.includes(paymentRequirements.network)) {
       return await settleExactSvm(client as KeyPairSigner, payload, paymentRequirements);
+    }
+  }
+
+  if (paymentRequirements.scheme == "deferred") {
+    payload = DeferredPaymentPayloadSchema.parse(payload);
+    if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
+      return settleDeferred(client, payload, paymentRequirements);
+    } else {
+      return {
+        success: false,
+        errorReason: "invalid_scheme",
+        transaction: "",
+        network: paymentRequirements.network,
+        payer: payload.payload.voucher.buyer,
+      };
     }
   }
 

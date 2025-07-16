@@ -1,11 +1,6 @@
 import { Chain, getAddress, Hex, LocalAccount, toHex, Transport } from "viem";
 import { getNetworkId } from "../../../shared";
-import {
-  authorizationTypes,
-  isAccount,
-  isSignerWallet,
-  SignerWallet,
-} from "../../../types/shared/evm";
+import { typedDataTypes, isAccount, isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements } from "../../../types/verify";
 import { ExactEvmPayloadAuthorization } from "../../../types/verify/schemes/exact";
 
@@ -36,7 +31,7 @@ export async function signAuthorization<transport extends Transport, chain exten
   const version = extra?.version;
 
   const data = {
-    types: authorizationTypes,
+    types: typedDataTypes,
     domain: {
       name,
       version,

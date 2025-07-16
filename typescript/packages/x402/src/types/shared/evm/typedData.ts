@@ -20,5 +20,5 @@ export const typedDataTypes = {
   ],
 };
 
-export const transferWithAuthorizationPrimaryType = "TransferWithAuthorization";
-export const deferredVoucherPrimaryType = "DeferredVoucher";
+export const transferWithAuthorizationPrimaryType = "TransferWithAuthorization" as const;
+export const deferredVoucherPrimaryType = "DeferredVoucher" as const;

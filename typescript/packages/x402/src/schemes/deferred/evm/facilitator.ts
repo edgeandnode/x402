@@ -1,17 +1,21 @@
-import { Account, Address, Chain, getAddress, Hex, parseErc6492Signature, Transport } from "viem";
+import {
+  Account,
+  Address,
+  Chain,
+  getAddress,
+  Hex,
+  encodeAbiParameters,
+  parseAbiParameters,
+  Transport,
+} from "viem";
 import { getNetworkId } from "../../../shared";
 import { getERC20Balance } from "../../../shared/evm";
-import {
-  usdcABI as abi,
-  typedDataTypes,
-  ConnectedClient,
-  SignerWallet,
-  deferredVoucherPrimaryType,
-} from "../../../types/shared/evm";
+import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements, SettleResponse, VerifyResponse } from "../../../types/verify";
 import { SCHEME } from "../../deferred";
 import { DeferredPaymentPayload } from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
+import { verifyVoucher } from "./sign";
 
 /**
  * Verifies a payment payload against the required payment details
@@ -103,23 +107,12 @@ export async function verify<
   }
 
   // Verify voucher signature is recoverable for the owner address
-  const voucherTypedData = {
-    types: typedDataTypes,
-    primaryType: deferredVoucherPrimaryType,
-    domain: {
-      name: "VoucherEscrow",
-      version: "1",
-      chainId,
-      verifyingContract: payload.payload.voucher.escrow as Address,
-    },
-    message: payload.payload.voucher,
-  };
-  const recoveredAddress = await client.verifyTypedData({
-    address: payload.payload.voucher.buyer as Address,
-    ...voucherTypedData,
-    signature: payload.payload.signature as Hex,
-  });
-  if (!recoveredAddress) {
+  const voucherSignatureIsValid = await verifyVoucher(
+    payload.payload.voucher,
+    payload.payload.signature as Hex,
+    payload.payload.voucher.buyer as Address,
+  );
+  if (!voucherSignatureIsValid) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
@@ -172,9 +165,9 @@ export async function verify<
 }
 
 /**
- * Settles a payment by executing a USDC transferWithAuthorization transaction
+ * Settles a payment by executing a collect transaction on the deferred escrow contract
  *
- * This function executes the actual USDC transfer using the signed authorization from the user.
+ * This function executes the collect transaction using a signed voucher.
  * The facilitator wallet submits the transaction but does not need to hold or transfer any tokens itself.
  *
  * @param wallet - The facilitator wallet that will submit the transaction
@@ -184,7 +177,7 @@ export async function verify<
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   wallet: SignerWallet<chain, transport>,
-  paymentPayload: ExactPaymentPayload,
+  paymentPayload: DeferredPaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<SettleResponse> {
   // re-verify to ensure the payment is still valid
@@ -195,27 +188,22 @@ export async function settle<transport extends Transport, chain extends Chain>(
       success: false,
       network: paymentPayload.network,
       transaction: "",
-      errorReason: valid.invalidReason ?? "invalid_scheme", //`Payment is no longer valid: ${valid.invalidReason}`,
-      payer: paymentPayload.payload.authorization.from,
+      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
-  // Returns the original signature (no-op) if the signature is not a 6492 signature
-  const { signature } = parseErc6492Signature(paymentPayload.payload.signature as Hex);
+  const { voucher, signature } = paymentPayload.payload;
 
+  const abiTypes = parseAbiParameters(
+    "(tuple(bytes32 id, address buyer, address seller, uint256 value, address asset, uint256 timestamp, uint256 nonce, address escrow, uint256 chainId) voucher, bytes signature)",
+  );
+  const encodedData = encodeAbiParameters(abiTypes, [[voucher, signature]]);
   const tx = await wallet.writeContract({
-    address: paymentRequirements.asset as Address,
-    abi,
-    functionName: "transferWithAuthorization" as const,
-    args: [
-      paymentPayload.payload.authorization.from as Address,
-      paymentPayload.payload.authorization.to as Address,
-      BigInt(paymentPayload.payload.authorization.value),
-      BigInt(paymentPayload.payload.authorization.validAfter),
-      BigInt(paymentPayload.payload.authorization.validBefore),
-      paymentPayload.payload.authorization.nonce as Hex,
-      signature,
-    ],
+    address: voucher.escrow as Address,
+    abi: deferredEscrowABI,
+    functionName: "collect" as const,
+    args: [encodedData],
     chain: wallet.chain as Chain,
   });
 
@@ -224,10 +212,10 @@ export async function settle<transport extends Transport, chain extends Chain>(
   if (receipt.status !== "success") {
     return {
       success: false,
-      errorReason: "invalid_transaction_state", //`Transaction failed`,
+      errorReason: "invalid_transaction_state",
       transaction: tx,
       network: paymentPayload.network,
-      payer: paymentPayload.payload.authorization.from,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
@@ -235,6 +223,6 @@ export async function settle<transport extends Transport, chain extends Chain>(
     success: true,
     transaction: tx,
     network: paymentPayload.network,
-    payer: paymentPayload.payload.authorization.from,
+    payer: paymentPayload.payload.voucher.buyer,
   };
 }

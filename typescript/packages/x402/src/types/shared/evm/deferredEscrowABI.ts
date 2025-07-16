@@ -18,4 +18,16 @@ export const deferredEscrowABI = [
     stateMutability: "view",
     type: "function",
   },
+  {
+    name: "collect",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "data",
+        type: "bytes",
+      },
+    ],
+    outputs: [],
+  },
 ] as const;

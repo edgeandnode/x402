@@ -1,56 +1,44 @@
-import { Chain, getAddress, Hex, LocalAccount, toHex, Transport } from "viem";
-import { getNetworkId } from "../../../shared";
+import { Address, Chain, getAddress, Hex, LocalAccount, Transport, verifyTypedData } from "viem";
 import {
-  authorizationTypes,
+  typedDataTypes,
   isAccount,
   isSignerWallet,
   SignerWallet,
+  deferredVoucherPrimaryType,
 } from "../../../types/shared/evm";
-import { PaymentRequirements } from "../../../types/verify";
-import { ExactEvmPayloadAuthorization } from "../../../types/verify/schemes/exact";
+import { DeferredEvmPayloadVoucher } from "../../../types/verify/schemes/deferred";
 
 /**
- * Signs an EIP-3009 authorization for USDC transfer
+ * Signs a voucher
  *
  * @param walletClient - The wallet client that will sign the authorization
- * @param params - The authorization parameters containing transfer details
- * @param params.from - The address tokens will be transferred from
- * @param params.to - The address tokens will be transferred to
- * @param params.value - The amount of USDC tokens to transfer (in base units)
- * @param params.validAfter - Unix timestamp after which the authorization becomes valid
- * @param params.validBefore - Unix timestamp before which the authorization is valid
- * @param params.nonce - Random 32-byte nonce to prevent replay attacks
- * @param paymentRequirements - The payment requirements containing asset and network information
- * @param paymentRequirements.asset - The address of the USDC contract
- * @param paymentRequirements.network - The network where the USDC contract exists
- * @param paymentRequirements.extra - The extra information containing the name and version of the ERC20 contract
+ * @param voucher - The voucher to sign
  * @returns The signature for the authorization
  */
-export async function signAuthorization<transport extends Transport, chain extends Chain>(
+export async function signVoucher<transport extends Transport, chain extends Chain>(
   walletClient: SignerWallet<chain, transport> | LocalAccount,
-  { from, to, value, validAfter, validBefore, nonce }: ExactEvmPayloadAuthorization,
-  { asset, network, extra }: PaymentRequirements,
+  voucher: DeferredEvmPayloadVoucher,
 ): Promise<{ signature: Hex }> {
-  const chainId = getNetworkId(network);
-  const name = extra?.name;
-  const version = extra?.version;
-
+  const { id, buyer, seller, value, asset, timestamp, nonce, escrow, chainId } = voucher;
   const data = {
-    types: authorizationTypes,
+    types: typedDataTypes,
+    primaryType: deferredVoucherPrimaryType,
     domain: {
-      name,
-      version,
+      name: "VoucherEscrow",
+      version: "1",
       chainId,
-      verifyingContract: getAddress(asset),
+      verifyingContract: getAddress(escrow),
     },
-    primaryType: "TransferWithAuthorization" as const,
     message: {
-      from: getAddress(from),
-      to: getAddress(to),
+      id,
+      buyer,
+      seller,
       value,
-      validAfter,
-      validBefore,
-      nonce: nonce,
+      asset,
+      timestamp,
+      nonce,
+      escrow,
+      chainId,
     },
   };
 
@@ -67,4 +55,37 @@ export async function signAuthorization<transport extends Transport, chain exten
   } else {
     throw new Error("Invalid wallet client provided does not support signTypedData");
   }
+}
+
+/**
+ * Verifies a voucher signature
+ *
+ * @param voucher - The voucher to verify
+ * @param signature - The signature to verify
+ * @param signer - The address of the signer to verify
+ * @returns The address that signed the voucher
+ */
+export async function verifyVoucher(
+  voucher: DeferredEvmPayloadVoucher,
+  signature: Hex,
+  signer: Address,
+) {
+  const voucherTypedData = {
+    types: typedDataTypes,
+    primaryType: deferredVoucherPrimaryType,
+    domain: {
+      name: "VoucherEscrow",
+      version: "1",
+      chainId: voucher.chainId,
+      verifyingContract: getAddress(voucher.escrow),
+    },
+    message: voucher,
+  };
+
+  // TODO: use client.verifyTypedData to support smart accounts
+  return await verifyTypedData({
+    address: signer,
+    ...voucherTypedData,
+    signature: signature as Hex,
+  });
 }
