@@ -21,7 +21,7 @@ import {
   DEFERRRED_SCHEME,
 } from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
-import { verifyVoucher } from "./sign";
+import { verifyVoucherSignature } from "./sign";
 
 /**
  * Verifies a payment payload against the required payment details
@@ -154,7 +154,7 @@ export async function verify<
   }
 
   // Verify voucher signature is recoverable for the owner address
-  const voucherSignatureIsValid = await verifyVoucher(
+  const voucherSignatureIsValid = await verifyVoucherSignature(
     paymentPayload.payload.voucher,
     paymentPayload.payload.signature as Hex,
     paymentPayload.payload.voucher.buyer as Address,

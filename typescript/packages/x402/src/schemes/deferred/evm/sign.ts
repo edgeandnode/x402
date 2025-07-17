@@ -65,7 +65,7 @@ export async function signVoucher<transport extends Transport, chain extends Cha
  * @param signer - The address of the signer to verify
  * @returns The address that signed the voucher
  */
-export async function verifyVoucher(
+export async function verifyVoucherSignature(
   voucher: DeferredEvmPayloadVoucher,
   signature: Hex,
   signer: Address,

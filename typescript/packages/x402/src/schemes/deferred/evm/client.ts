@@ -1,7 +1,7 @@
 import { Address, Chain, Hex, LocalAccount, Transport } from "viem";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
-import { signVoucher, verifyVoucher } from "./sign";
+import { signVoucher, verifyVoucherSignature } from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
 import {
   DeferredEvmPayloadVoucher,
@@ -88,7 +88,7 @@ export async function aggregateVoucher(
   );
 
   // verify signature is valid and the voucher's buyer is the client
-  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
+  const isValid = await verifyVoucherSignature(extra.voucher, extra.signature as Hex, buyer);
   if (!isValid) {
     throw new Error("Invalid voucher signature");
   }

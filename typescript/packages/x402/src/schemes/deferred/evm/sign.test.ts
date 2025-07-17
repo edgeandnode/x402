@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSigner } from "../../../types/shared/evm";
-import { signVoucher, verifyVoucher } from "./sign";
+import { signVoucher, verifyVoucherSignature } from "./sign";
 
 const buyer = createSigner(
   "base-sepolia",
@@ -46,12 +46,16 @@ describe("voucher signature", () => {
   });
 
   it("should verify a valid voucher signature", async () => {
-    const isValid = await verifyVoucher(mockVoucher, mockVoucherSignature, buyerAddress);
+    const isValid = await verifyVoucherSignature(mockVoucher, mockVoucherSignature, buyerAddress);
     expect(isValid).toBe(true);
   });
 
   it("should return false if voucher signature is valid but for a different buyer", async () => {
-    const isValid = await verifyVoucher(mockVoucher, mockVoucherSignature, anotherBuyerAddress);
+    const isValid = await verifyVoucherSignature(
+      mockVoucher,
+      mockVoucherSignature,
+      anotherBuyerAddress,
+    );
     expect(isValid).toBe(false);
   });
 });
