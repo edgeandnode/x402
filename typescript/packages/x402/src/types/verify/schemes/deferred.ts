@@ -4,11 +4,9 @@ import {
   EvmSignatureRegex,
   HexEncoded64ByteRegex,
   EvmMaxAtomicUnits,
-  MixedAddressRegex,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
-import { NetworkSchema } from "../../shared";
-import { x402Versions } from "../versions";
+import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
 
 export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_network_mismatch",
@@ -42,20 +40,16 @@ export const DeferredEvmPayloadSchema = z.object({
 });
 export type DeferredEvmPayload = z.infer<typeof DeferredEvmPayloadSchema>;
 
-// x402DeferredEvmPaymentPayload
-export const DeferredPaymentPayloadSchema = z.object({
-  x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
+// x402DeferredPaymentPayload
+export const DeferredPaymentPayloadSchema = BasePaymentPayloadSchema.extend({
   scheme: z.literal("deferred"),
-  network: NetworkSchema,
   payload: DeferredEvmPayloadSchema,
 });
 export type DeferredPaymentPayload = z.infer<typeof DeferredPaymentPayloadSchema>;
 
 // x402UnsignedDeferredPaymentPayload
-export const UnsignedDeferredPaymentPayloadSchema = z.object({
-  x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
+export const UnsignedDeferredPaymentPayloadSchema = BasePaymentPayloadSchema.extend({
   scheme: z.literal("deferred"),
-  network: NetworkSchema,
   payload: DeferredEvmPayloadSchema.omit({ signature: true }).extend({
     signature: z.undefined(),
   }),
@@ -81,21 +75,12 @@ export type DeferredEvmPaymentRequirementsExtraAggregationVoucher = z.infer<
   typeof DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema
 >;
 
-// x402DeferredEvmPaymentRequirements
-export const DeferredEvmPaymentRequirementsSchema = z.object({
+// x402DeferredPaymentRequirements
+export const DeferredPaymentRequirementsSchema = BasePaymentRequirementsSchema.extend({
   scheme: z.literal("deferred"),
-  network: NetworkSchema,
-  maxAmountRequired: z.string().refine(isInteger),
-  resource: z.string().url(),
-  description: z.string(),
-  mimeType: z.string(),
-  outputSchema: z.record(z.any()).optional(),
-  payTo: z.string().regex(MixedAddressRegex),
-  maxTimeoutSeconds: z.number().int(),
-  asset: z.string().regex(MixedAddressRegex),
   extra: z.discriminatedUnion("type", [
     DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
     DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
   ]),
 });
-export type DeferredEvmPaymentRequirements = z.infer<typeof DeferredEvmPaymentRequirementsSchema>;
+export type DeferredPaymentRequirements = z.infer<typeof DeferredPaymentRequirementsSchema>;

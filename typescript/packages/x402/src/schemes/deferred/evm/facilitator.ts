@@ -11,9 +11,14 @@ import {
 import { getNetworkId } from "../../../shared";
 import { getERC20Balance } from "../../../shared/evm";
 import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
-import { PaymentRequirements, SettleResponse, VerifyResponse } from "../../../types/verify";
+import {
+  PaymentPayload,
+  PaymentRequirements,
+  SettleResponse,
+  VerifyResponse,
+} from "../../../types/verify";
 import { SCHEME } from "../../deferred";
-import { DeferredPaymentPayload } from "../../../types/verify/schemes/deferred";
+import { DeferredPaymentPayloadSchema } from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 import { verifyVoucher } from "./sign";
 
@@ -33,7 +38,7 @@ import { verifyVoucher } from "./sign";
  * - ✅ (on-chain) Verifies the voucher id has not been already claimed
  *
  * @param client - The public client used for blockchain interactions
- * @param payload - The signed payment payload containing transfer parameters and signature
+ * @param paymentPayload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
  * @returns A ValidPaymentRequest indicating if the payment is valid and any invalidation reason
  */
@@ -43,51 +48,56 @@ export async function verify<
   account extends Account | undefined,
 >(
   client: ConnectedClient<transport, chain, account>,
-  payload: DeferredPaymentPayload,
+  paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<VerifyResponse> {
+  // Verify payload is a deferred payment payload - plus type assert to DeferredPaymentPayload
+  paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
+
   // Verify payload matches requirements: scheme
-  if (payload.scheme !== SCHEME || paymentRequirements.scheme !== SCHEME) {
+  if (paymentPayload.scheme !== SCHEME || paymentRequirements.scheme !== SCHEME) {
     return {
       isValid: false,
       invalidReason: `unsupported_scheme`,
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify payload matches requirements: network
-  if (payload.network !== paymentRequirements.network) {
+  if (paymentPayload.network !== paymentRequirements.network) {
     return {
       isValid: false,
       invalidReason: `invalid_network`,
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify payload matches requirements: maxAmountRequired -- value in payload is enough to cover paymentRequirements.maxAmountRequired
-  if (BigInt(payload.payload.voucher.value) < BigInt(paymentRequirements.maxAmountRequired)) {
+  if (
+    BigInt(paymentPayload.payload.voucher.value) < BigInt(paymentRequirements.maxAmountRequired)
+  ) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_value",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify payload matches requirements: payTo
-  if (getAddress(payload.payload.voucher.seller) !== getAddress(paymentRequirements.payTo)) {
+  if (getAddress(paymentPayload.payload.voucher.seller) !== getAddress(paymentRequirements.payTo)) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_recipient_mismatch",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify payload matches requirements: asset
-  if (payload.payload.voucher.asset !== paymentRequirements.asset) {
+  if (paymentPayload.payload.voucher.asset !== paymentRequirements.asset) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_asset_mismatch",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
@@ -95,28 +105,28 @@ export async function verify<
   let chainId: number;
   try {
     chainId = getNetworkId(paymentRequirements.network);
-    if (chainId !== payload.payload.voucher.chainId) {
+    if (chainId !== paymentPayload.payload.voucher.chainId) {
       throw new Error();
     }
   } catch {
     return {
       isValid: false,
       invalidReason: `invalid_deferred_evm_payload_chain_id`,
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify voucher signature is recoverable for the owner address
   const voucherSignatureIsValid = await verifyVoucher(
-    payload.payload.voucher,
-    payload.payload.signature as Hex,
-    payload.payload.voucher.buyer as Address,
+    paymentPayload.payload.voucher,
+    paymentPayload.payload.signature as Hex,
+    paymentPayload.payload.voucher.buyer as Address,
   );
   if (!voucherSignatureIsValid) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
@@ -124,27 +134,27 @@ export async function verify<
   try {
     const balance = await getERC20Balance(
       client,
-      payload.payload.voucher.asset as Address,
-      payload.payload.voucher.buyer as Address,
+      paymentPayload.payload.voucher.asset as Address,
+      paymentPayload.payload.voucher.buyer as Address,
     );
-    if (balance < BigInt(payload.payload.voucher.value)) {
+    if (balance < BigInt(paymentPayload.payload.voucher.value)) {
       throw new Error();
     }
   } catch {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   // Verify voucher id has not been already claimed
   try {
     const isCollected = await client.readContract({
-      address: payload.payload.voucher.escrow as Address,
+      address: paymentPayload.payload.voucher.escrow as Address,
       abi: deferredEscrowABI,
       functionName: "isCollected",
-      args: [payload.payload.voucher.id as Hex],
+      args: [paymentPayload.payload.voucher.id as Hex],
     });
     if (isCollected) {
       throw new Error();
@@ -153,14 +163,14 @@ export async function verify<
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_already_claimed",
-      payer: payload.payload.voucher.buyer,
+      payer: paymentPayload.payload.voucher.buyer,
     };
   }
 
   return {
     isValid: true,
     invalidReason: undefined,
-    payer: payload.payload.voucher.buyer,
+    payer: paymentPayload.payload.voucher.buyer,
   };
 }
 
@@ -177,9 +187,12 @@ export async function verify<
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   wallet: SignerWallet<chain, transport>,
-  paymentPayload: DeferredPaymentPayload,
+  paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<SettleResponse> {
+  // Verify payload is a deferred payment payload - plus type assert to DeferredPaymentPayload
+  paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
+
   // re-verify to ensure the payment is still valid
   const valid = await verify(wallet, paymentPayload, paymentRequirements);
 

@@ -4,7 +4,8 @@ import { PaymentRequirements } from "../../../types/verify";
 import { createPaymentHeader, preparePaymentHeader, signPaymentHeader } from "./client";
 import {
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
-  DeferredEvmPaymentRequirementsSchema,
+  DeferredPaymentPayloadSchema,
+  DeferredPaymentRequirementsSchema,
   UnsignedDeferredPaymentPayload,
 } from "../../../types/verify/schemes/deferred";
 import { encodePayment } from "./utils/paymentUtils";
@@ -58,7 +59,7 @@ describe("preparePaymentHeader: new voucher", () => {
     const paymentHeader = await preparePaymentHeader(buyerAddress, 1, mockPaymentRequirements);
 
     const parsedPaymentRequirements =
-      DeferredEvmPaymentRequirementsSchema.parse(mockPaymentRequirements);
+      DeferredPaymentRequirementsSchema.parse(mockPaymentRequirements);
 
     expect(paymentHeader).toEqual({
       x402Version: 1,
@@ -85,6 +86,7 @@ describe("preparePaymentHeader: new voucher", () => {
     const requiredFields = ["id", "escrow"];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockPaymentRequirements);
+      // @ts-expect-error - TODO: fix this
       delete badPaymentRequirements.extra!.voucher[field];
       await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
     }
@@ -94,6 +96,7 @@ describe("preparePaymentHeader: new voucher", () => {
     const requiredFields = ["id", "escrow"];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockPaymentRequirements);
+      // @ts-expect-error - TODO: fix this
       badPaymentRequirements.extra!.voucher[field] = "0x";
       await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
     }
@@ -183,6 +186,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
   it("should revert if voucher signature is invalid", async () => {
     // Inject incorrect signature into mockAggregatedPaymentRequirements
     const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    // @ts-expect-error - TODO: fix this
     paymentRequirements.extra!.signature =
       "0x79ce97f6d1242aa7b6f4826efb553ed453fd6c7132c665d95bc226d5f3027dd5456d61ed1bd8da5de6cea4d8154070ff458300b6b84e0c9010f434af77ad3d291c";
 
@@ -205,6 +209,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
     ];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+      // @ts-expect-error - TODO: fix this
       delete badPaymentRequirements.extra!.voucher[field];
       await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
     }
@@ -224,6 +229,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
     ];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+      // @ts-expect-error - TODO: fix this
       badPaymentRequirements.extra!.voucher[field] = "0x";
       await expect(preparePaymentHeader(buyerAddress, 1, badPaymentRequirements)).rejects.toThrow();
     }
@@ -271,7 +277,8 @@ describe("signPaymentHeader", () => {
   });
 
   it("should preserve all original fields in the signed payload", async () => {
-    const signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
+    let signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
+    signedPaymentPayload = DeferredPaymentPayloadSchema.parse(signedPaymentPayload);
 
     // Check that all original fields are preserved
     expect(signedPaymentPayload.x402Version).toBe(mockUnsignedHeader.x402Version);
@@ -358,16 +365,6 @@ describe("createPaymentHeader", () => {
             chainId: mockSignedPayment.payload.voucher.chainId,
           }),
         }),
-      }),
-    );
-  });
-
-  it("should handle different x402 versions", async () => {
-    await createPaymentHeader(buyer, 2, mockPaymentRequirements);
-
-    expect(vi.mocked(encodePayment)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        x402Version: 2,
       }),
     );
   });

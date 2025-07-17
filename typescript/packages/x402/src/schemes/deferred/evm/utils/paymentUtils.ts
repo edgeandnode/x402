@@ -1,8 +1,6 @@
 import { safeBase64Encode, safeBase64Decode } from "../../../../shared";
-import {
-  DeferredPaymentPayload,
-  DeferredPaymentPayloadSchema,
-} from "../../../../types/verify/schemes/deferred";
+import { PaymentPayload } from "../../../../types/verify";
+import { DeferredPaymentPayloadSchema } from "../../../../types/verify/schemes/deferred";
 
 /**
  * Encodes a payment payload into a base64 string, ensuring bigint values are properly stringified
@@ -10,13 +8,14 @@ import {
  * @param payment - The payment payload to encode
  * @returns A base64 encoded string representation of the payment payload
  */
-export function encodePayment(payment: DeferredPaymentPayload): string {
+export function encodePayment(payment: PaymentPayload): string {
+  const deferredPayment = DeferredPaymentPayloadSchema.parse(payment);
   const safe = {
-    ...payment,
+    ...deferredPayment,
     payload: {
       ...payment.payload,
       voucher: Object.fromEntries(
-        Object.entries(payment.payload.voucher).map(([key, value]) => [
+        Object.entries(deferredPayment.payload.voucher).map(([key, value]) => [
           key,
           typeof value === "bigint" ? (value as bigint).toString() : value,
         ]),
@@ -32,7 +31,7 @@ export function encodePayment(payment: DeferredPaymentPayload): string {
  * @param payment - The base64 encoded payment string to decode
  * @returns The decoded and validated PaymentPayload object
  */
-export function decodePayment(payment: string): DeferredPaymentPayload {
+export function decodePayment(payment: string): PaymentPayload {
   const decoded = safeBase64Decode(payment);
   const parsed = JSON.parse(decoded);
 

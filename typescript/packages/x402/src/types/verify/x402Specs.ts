@@ -1,19 +1,20 @@
 import { z } from "zod";
 import { NetworkSchema } from "../shared";
-import { SvmAddressRegex } from "../shared/svm";
-import { isInteger } from "./refiners";
-import { EvmAddressRegex, MixedAddressRegex } from "./constants";
+import { MixedAddressRegex } from "./constants";
 import {
   ExactErrorReasons,
   ExactPaymentPayloadSchema,
+  ExactPaymentRequirementsSchema,
   UnsignedExactPaymentPayloadSchema,
 } from "./schemes/exact";
 import {
   DeferredErrorReasons,
   DeferredPaymentPayloadSchema,
+  DeferredPaymentRequirementsSchema,
   UnsignedDeferredPaymentPayloadSchema,
 } from "./schemes/deferred";
 import { x402Versions } from "./versions";
+import { EvmOrSvmAddress } from "..";
 
 // Enums
 export const schemes = ["exact", "deferred"] as const;
@@ -37,24 +38,10 @@ export const ErrorReasons = [
 ] as const;
 
 // x402PaymentRequirements
-const EvmOrSvmAddress = z.string().regex(EvmAddressRegex).or(z.string().regex(SvmAddressRegex));
-const mixedAddressOrSvmAddress = z
-  .string()
-  .regex(MixedAddressRegex)
-  .or(z.string().regex(SvmAddressRegex));
-export const PaymentRequirementsSchema = z.object({
-  scheme: z.enum(schemes),
-  network: NetworkSchema,
-  maxAmountRequired: z.string().refine(isInteger),
-  resource: z.string().url(),
-  description: z.string(),
-  mimeType: z.string(),
-  outputSchema: z.record(z.any()).optional(),
-  payTo: EvmOrSvmAddress,
-  maxTimeoutSeconds: z.number().int(),
-  asset: mixedAddressOrSvmAddress,
-  extra: z.record(z.any()).optional(),
-});
+export const PaymentRequirementsSchema = z.discriminatedUnion("scheme", [
+  ExactPaymentRequirementsSchema,
+  DeferredPaymentRequirementsSchema,
+]);
 export type PaymentRequirements = z.infer<typeof PaymentRequirementsSchema>;
 
 // x402PaymentPayload
@@ -63,6 +50,8 @@ export const PaymentPayloadSchema = z.discriminatedUnion("scheme", [
   DeferredPaymentPayloadSchema,
 ]);
 export type PaymentPayload = z.infer<typeof PaymentPayloadSchema>;
+
+// x402UnsignedPaymentPayload
 export const UnsignedPaymentPayloadSchema = z.discriminatedUnion("scheme", [
   UnsignedExactPaymentPayloadSchema,
   UnsignedDeferredPaymentPayloadSchema,
@@ -156,7 +145,7 @@ export const SettleResponseSchema = z.object({
   errorReason: z.enum(ErrorReasons).optional(),
   payer: EvmOrSvmAddress.optional(),
   transaction: z.string().regex(MixedAddressRegex),
-  network: NetworkSchema,
+  network: NetworkSchema.optional(),
 });
 export type SettleResponse = z.infer<typeof SettleResponseSchema>;
 

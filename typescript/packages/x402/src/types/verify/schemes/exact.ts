@@ -9,6 +9,7 @@ import { hasMaxLength, isInteger } from "../refiners";
 import { Base64EncodedRegex } from "../../../shared";
 import { NetworkSchema } from "../../shared";
 import { x402Versions } from "../versions";
+import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
 
 export const ExactErrorReasons = [
   "invalid_exact_evm_payload_authorization_valid_after",
@@ -78,12 +79,22 @@ export const ExactPaymentPayloadSchema = z.object({
 export type ExactPaymentPayload = z.infer<typeof ExactPaymentPayloadSchema>;
 
 // x402UnsignedPaymentPayload
-export const UnsignedExactPaymentPayloadSchema = z.object({
-  x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
+export const UnsignedExactPaymentPayloadSchema = BasePaymentPayloadSchema.extend({
   scheme: z.literal("exact"),
-  network: NetworkSchema,
   payload: ExactEvmPayloadSchema.omit({ signature: true }).extend({
     signature: z.undefined(),
   }),
 });
 export type UnsignedExactPaymentPayload = z.infer<typeof UnsignedExactPaymentPayloadSchema>;
+
+// x402ExactPaymentRequirements
+export const ExactPaymentRequirementsSchema = BasePaymentRequirementsSchema.extend({
+  scheme: z.literal("exact"),
+  extra: z
+    .object({
+      name: z.string().optional(),
+      version: z.string().optional(),
+    })
+    .optional(),
+});
+export type ExactPaymentRequirements = z.infer<typeof ExactPaymentRequirementsSchema>;
