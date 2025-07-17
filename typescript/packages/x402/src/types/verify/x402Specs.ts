@@ -2,12 +2,14 @@ import { z } from "zod";
 import { NetworkSchema } from "../shared";
 import { MixedAddressRegex } from "./constants";
 import {
+  EXACT_SCHEME,
   ExactErrorReasons,
   ExactPaymentPayloadSchema,
   ExactPaymentRequirementsSchema,
   UnsignedExactPaymentPayloadSchema,
 } from "./schemes/exact";
 import {
+  DEFERRRED_SCHEME,
   DeferredErrorReasons,
   DeferredPaymentPayloadSchema,
   DeferredPaymentRequirementsSchema,
@@ -17,7 +19,7 @@ import { x402Versions } from "./versions";
 import { EvmOrSvmAddress } from "..";
 
 // Enums
-export const schemes = ["exact", "deferred"] as const;
+export const schemes = [EXACT_SCHEME, DEFERRRED_SCHEME] as const;
 export const ErrorReasons = [
   "insufficient_funds",
   "insufficient_funds_contract_call_failed",

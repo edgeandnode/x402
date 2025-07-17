@@ -3,6 +3,8 @@ import { createPaymentHeader as createPaymentHeaderExactSVM } from "../schemes/e
 import { isEvmSignerWallet, isMultiNetworkSigner, isSvmSignerWallet, MultiNetworkSigner, Signer, SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
 import { createPaymentHeader as createPaymentHeaderDeferredEVM } from "../schemes/deferred/evm/client";
 import { PaymentRequirements } from "../types/verify";
+import { DEFERRRED_SCHEME } from "../types/verify/schemes/deferred";
+import { EXACT_SCHEME } from "../types/verify/schemes/exact";
 
 /**
  * Creates a payment header based on the provided client and payment requirements.
@@ -18,7 +20,7 @@ export async function createPaymentHeader(
   paymentRequirements: PaymentRequirements,
 ): Promise<string> {
   // exact scheme
-  if (paymentRequirements.scheme === "exact") {
+  if (paymentRequirements.scheme === EXACT_SCHEME) {
     // evm
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
       const evmClient = isMultiNetworkSigner(client) ? client.evm : client;
@@ -51,7 +53,7 @@ export async function createPaymentHeader(
 
   // deferred scheme
   if (
-    paymentRequirements.scheme === "deferred" &&
+    paymentRequirements.scheme === DEFERRRED_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     return await createPaymentHeaderDeferredEVM(client, x402Version, paymentRequirements);

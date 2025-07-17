@@ -18,6 +18,8 @@ import { Chain, Transport, Account } from "viem";
 import { KeyPairSigner } from "@solana/kit";
 import { ExactPaymentPayloadSchema } from "../types/verify/schemes/exact";
 import { DeferredPaymentPayloadSchema } from "../types/verify/schemes/deferred";
+import { DEFERRRED_SCHEME } from "../types/verify/schemes/deferred";
+import { EXACT_SCHEME } from "../types/verify/schemes/exact";
 
 /**
  * Verifies a payment payload against the required payment details regardless of the scheme
@@ -37,8 +39,7 @@ export async function verify<
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<VerifyResponse> {
-  // exact scheme
-  if (paymentRequirements.scheme === "exact") {
+  if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
     // evm
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
@@ -55,8 +56,7 @@ export async function verify<
     }
   }
 
-  // deferred scheme
-  if (paymentRequirements.scheme == "deferred") {
+  if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
       const valid = await verifyDeferred(client, payload, paymentRequirements);
@@ -94,8 +94,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<SettleResponse> {
-  // exact scheme
-  if (paymentRequirements.scheme === "exact") {
+  if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
     // evm
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
@@ -112,7 +111,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
     }
   }
 
-  if (paymentRequirements.scheme == "deferred") {
+  if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
       return settleDeferred(client, payload, paymentRequirements);

@@ -11,6 +11,7 @@ import {
   UnsignedDeferredPaymentPayloadSchema,
 } from "../../../types/verify/schemes/deferred";
 import { getNetworkId } from "../../../shared/network";
+import { DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
 
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
@@ -34,7 +35,7 @@ export async function preparePaymentHeader(
 
   return {
     x402Version,
-    scheme: "deferred",
+    scheme: DEFERRRED_SCHEME,
     network: deferredPaymentRequirements.network,
     payload: {
       signature: undefined,

@@ -7,6 +7,7 @@ import {
   ExactPaymentPayload,
   UnsignedExactPaymentPayload,
 } from "../../../types/verify/schemes/exact";
+import { EXACT_SCHEME } from "../../../types/verify/schemes/exact";
 
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
@@ -32,7 +33,7 @@ export function preparePaymentHeader(
 
   return {
     x402Version,
-    scheme: "exact",
+    scheme: EXACT_SCHEME,
     network: paymentRequirements.network,
     payload: {
       signature: undefined,

@@ -8,6 +8,8 @@ import {
 import { hasMaxLength, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
 
+export const DEFERRRED_SCHEME = "deferred";
+
 export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_network_mismatch",
   "invalid_deferred_evm_payload_chain_id",
@@ -43,14 +45,14 @@ export type DeferredEvmPayload = z.infer<typeof DeferredEvmPayloadSchema>;
 
 // x402DeferredPaymentPayload
 export const DeferredPaymentPayloadSchema = BasePaymentPayloadSchema.extend({
-  scheme: z.literal("deferred"),
+  scheme: z.literal(DEFERRRED_SCHEME),
   payload: DeferredEvmPayloadSchema,
 });
 export type DeferredPaymentPayload = z.infer<typeof DeferredPaymentPayloadSchema>;
 
 // x402UnsignedDeferredPaymentPayload
 export const UnsignedDeferredPaymentPayloadSchema = BasePaymentPayloadSchema.extend({
-  scheme: z.literal("deferred"),
+  scheme: z.literal(DEFERRRED_SCHEME),
   payload: DeferredEvmPayloadSchema.omit({ signature: true }).extend({
     signature: z.undefined(),
   }),
@@ -78,7 +80,7 @@ export type DeferredEvmPaymentRequirementsExtraAggregationVoucher = z.infer<
 
 // x402DeferredPaymentRequirements
 export const DeferredPaymentRequirementsSchema = BasePaymentRequirementsSchema.extend({
-  scheme: z.literal("deferred"),
+  scheme: z.literal(DEFERRRED_SCHEME),
   extra: z.discriminatedUnion("type", [
     DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
     DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,

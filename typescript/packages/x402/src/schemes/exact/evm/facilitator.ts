@@ -15,8 +15,7 @@ import {
   VerifyResponse,
   ExactEvmPayload,
 } from "../../../types/verify";
-import { SCHEME } from "../../exact";
-import { ExactPaymentPayload } from "../../../types/verify/schemes/exact";
+import { ExactPaymentPayload, EXACT_SCHEME } from "../../../types/verify/schemes/exact";
 
 /**
  * Verifies a payment payload against the required payment details
@@ -59,7 +58,7 @@ export async function verify<
   const exactEvmPayload = payload.payload as ExactEvmPayload;
 
   // Verify payload version
-  if (payload.scheme !== SCHEME || paymentRequirements.scheme !== SCHEME) {
+  if (payload.scheme !== EXACT_SCHEME || paymentRequirements.scheme !== EXACT_SCHEME) {
     return {
       isValid: false,
       invalidReason: `unsupported_scheme`,

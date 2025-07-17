@@ -3,6 +3,8 @@ import { preparePaymentHeader as preparePaymentHeaderExactEVM } from "../schemes
 import { preparePaymentHeader as preparePaymentHeaderDeferredEVM } from "../schemes/deferred/evm/client";
 import { SupportedEVMNetworks } from "../types/shared";
 import { PaymentRequirements, UnsignedPaymentPayload } from "../types/verify";
+import { DEFERRRED_SCHEME } from "../types/verify/schemes/deferred";
+import { EXACT_SCHEME } from "../types/verify/schemes/exact";
 
 /**
  * Prepares a payment header with the given sender address and payment requirements.
@@ -19,7 +21,7 @@ export function preparePaymentHeader(
   paymentRequirements: PaymentRequirements,
 ): UnsignedPaymentPayload {
   if (
-    paymentRequirements.scheme === "exact" &&
+    paymentRequirements.scheme === EXACT_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     return preparePaymentHeaderExactEVM(from, x402Version, paymentRequirements);
@@ -44,14 +46,14 @@ export function preparePaymentHeaderAsync(
 ): Promise<UnsignedPaymentPayload> {
 
   if (
-    paymentRequirements.scheme === "exact" &&
+    paymentRequirements.scheme === EXACT_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     return Promise.resolve(preparePaymentHeaderExactEVM(from, x402Version, paymentRequirements));
   }
 
   if (
-    paymentRequirements.scheme === "deferred" &&
+    paymentRequirements.scheme === DEFERRRED_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     return preparePaymentHeaderDeferredEVM(from, x402Version, paymentRequirements);

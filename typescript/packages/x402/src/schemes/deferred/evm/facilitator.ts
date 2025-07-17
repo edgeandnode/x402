@@ -16,8 +16,10 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "../../../types/verify";
-import { SCHEME } from "../../deferred";
-import { DeferredPaymentPayloadSchema } from "../../../types/verify/schemes/deferred";
+import {
+  DeferredPaymentPayloadSchema,
+  DEFERRRED_SCHEME,
+} from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 import { verifyVoucher } from "./sign";
 
@@ -54,7 +56,10 @@ export async function verify<
   paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
 
   // Verify payload matches requirements: scheme
-  if (paymentPayload.scheme !== SCHEME || paymentRequirements.scheme !== SCHEME) {
+  if (
+    paymentPayload.scheme !== DEFERRRED_SCHEME ||
+    paymentRequirements.scheme !== DEFERRRED_SCHEME
+  ) {
     return {
       isValid: false,
       invalidReason: `unsupported_scheme`,

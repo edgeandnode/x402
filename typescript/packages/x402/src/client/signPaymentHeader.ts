@@ -6,6 +6,8 @@ import { encodePayment as encodePaymentDeferredEVM } from "../schemes/deferred/e
 import { PaymentRequirements, UnsignedPaymentPayload } from "../types/verify";
 import { UnsignedDeferredPaymentPayloadSchema } from "../types/verify/schemes/deferred";
 import { UnsignedExactPaymentPayloadSchema } from "../types/verify/schemes/exact";
+import { DEFERRRED_SCHEME } from "../types/verify/schemes/deferred";
+import { EXACT_SCHEME } from "../types/verify/schemes/exact";
 
 /**
  * Signs a payment header using the provided client and payment requirements.
@@ -21,7 +23,7 @@ export async function signPaymentHeader(
   unsignedPaymentHeader: UnsignedPaymentPayload,
 ): Promise<string> {
   if (
-    paymentRequirements.scheme === "exact" &&
+    paymentRequirements.scheme === EXACT_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     const evmClient = isMultiNetworkSigner(client) ? client.evm : client;
@@ -35,7 +37,7 @@ export async function signPaymentHeader(
   }
 
   if (
-    paymentRequirements.scheme === "deferred" &&
+    paymentRequirements.scheme === DEFERRRED_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
     unsignedPaymentHeader = UnsignedDeferredPaymentPayloadSchema.parse(unsignedPaymentHeader);
