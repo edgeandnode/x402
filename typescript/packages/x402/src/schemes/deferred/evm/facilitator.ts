@@ -37,6 +37,7 @@ import { verifyVoucher } from "./sign";
  * - ✅ Validates the voucher chainId matches the chain specified in the payment requirements
  * - ✅ (on-chain) Verifies buyer has sufficient asset balance
  * - ✅ (on-chain) Verifies the voucher id has not been already claimed
+ * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param client - The public client used for blockchain interactions
  * @param paymentPayload - The signed payment payload containing transfer parameters and signature
