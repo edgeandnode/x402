@@ -72,16 +72,35 @@ export async function verify<
     };
   }
 
-  // Verify payload matches requirements: maxAmountRequired -- value in payload is enough to cover paymentRequirements.maxAmountRequired
-  if (
-    BigInt(paymentPayload.payload.voucher.valueAggregate) <
-    BigInt(paymentRequirements.maxAmountRequired)
-  ) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_value",
-      payer: paymentPayload.payload.voucher.buyer,
-    };
+  // Verify payload matches requirements: maxAmountRequired -- new vouchers
+  // value in voucher should be enough to cover paymentRequirements.maxAmountRequired
+  if (paymentRequirements.extra.type === "new") {
+    if (
+      BigInt(paymentPayload.payload.voucher.valueAggregate) <
+      BigInt(paymentRequirements.maxAmountRequired)
+    ) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_value",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+  }
+
+  // Verify payload matches requirements: maxAmountRequired -- aggregate vouchers
+  // value in voucher should be enough to cover paymentRequirements.maxAmountRequired plus previous voucher value
+  if (paymentRequirements.extra.type === "aggregation") {
+    if (
+      BigInt(paymentPayload.payload.voucher.valueAggregate) <
+      BigInt(paymentRequirements.maxAmountRequired) +
+        BigInt(paymentRequirements.extra.voucher.valueAggregate)
+    ) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_value",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
   }
 
   // Verify payload matches requirements: payTo
