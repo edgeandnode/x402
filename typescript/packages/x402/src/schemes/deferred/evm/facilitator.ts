@@ -74,7 +74,8 @@ export async function verify<
 
   // Verify payload matches requirements: maxAmountRequired -- value in payload is enough to cover paymentRequirements.maxAmountRequired
   if (
-    BigInt(paymentPayload.payload.voucher.value) < BigInt(paymentRequirements.maxAmountRequired)
+    BigInt(paymentPayload.payload.voucher.valueAggregate) <
+    BigInt(paymentRequirements.maxAmountRequired)
   ) {
     return {
       isValid: false,
@@ -137,7 +138,7 @@ export async function verify<
       paymentPayload.payload.voucher.asset as Address,
       paymentPayload.payload.voucher.buyer as Address,
     );
-    if (balance < BigInt(paymentPayload.payload.voucher.value)) {
+    if (balance < BigInt(paymentPayload.payload.voucher.valueAggregate)) {
       throw new Error();
     }
   } catch {

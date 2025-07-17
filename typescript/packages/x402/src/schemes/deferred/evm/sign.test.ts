@@ -18,7 +18,7 @@ describe("voucher signature", () => {
     id: voucherId,
     buyer: buyerAddress,
     seller: sellerAddress,
-    value: "1000000",
+    valueAggregate: "1000000",
     asset: assetAddress,
     timestamp: 1715769600,
     nonce: 0,
@@ -27,7 +27,7 @@ describe("voucher signature", () => {
   };
 
   const mockVoucherSignature =
-    "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c";
+    "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c";
 
   beforeEach(() => {
     vi.useFakeTimers();

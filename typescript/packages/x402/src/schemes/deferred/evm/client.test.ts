@@ -71,7 +71,7 @@ describe("preparePaymentHeader: new voucher", () => {
           id: voucherId,
           buyer: buyerAddress,
           seller: sellerAddress,
-          value: parsedPaymentRequirements.maxAmountRequired,
+          valueAggregate: parsedPaymentRequirements.maxAmountRequired,
           asset: assetAddress,
           timestamp: expect.any(Number),
           nonce: 0,
@@ -122,12 +122,12 @@ describe("preparePaymentHeader: aggregated voucher", () => {
     extra: {
       type: "aggregation",
       signature:
-        "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c",
+        "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c",
       voucher: {
         id: voucherId,
         buyer: buyerAddress,
         seller: sellerAddress,
-        value: "1000000",
+        valueAggregate: "1000000",
         asset: assetAddress,
         timestamp: 1715769600,
         nonce: 0,
@@ -169,9 +169,9 @@ describe("preparePaymentHeader: aggregated voucher", () => {
           id: voucherId,
           buyer: buyerAddress,
           seller: sellerAddress,
-          value: (
+          valueAggregate: (
             BigInt(mockAggregatedPaymentRequirements.maxAmountRequired) +
-            BigInt(parsedExtra.voucher.value)
+            BigInt(parsedExtra.voucher.valueAggregate)
           ).toString(),
           asset: assetAddress,
           timestamp: expect.any(Number),
@@ -200,7 +200,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
       "id",
       "buyer",
       "seller",
-      "value",
+      "valueAggregate",
       "asset",
       "timestamp",
       "nonce",
@@ -220,7 +220,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
       "id",
       "buyer",
       "seller",
-      "value",
+      "valueAggregate",
       "asset",
       "timestamp",
       "nonce",
@@ -252,7 +252,7 @@ describe("signPaymentHeader", () => {
         id: voucherId,
         buyer: buyerAddress,
         seller: sellerAddress,
-        value: "1000000",
+        valueAggregate: "1000000",
         asset: assetAddress,
         timestamp: 1715769600,
         nonce: 0,
@@ -262,7 +262,7 @@ describe("signPaymentHeader", () => {
     },
   };
   const mockVoucherSignature =
-    "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c";
+    "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c";
 
   it("should sign the payment header and return a complete payload", async () => {
     const signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
@@ -307,12 +307,12 @@ describe("createPaymentHeader", () => {
     extra: {
       type: "aggregation",
       signature:
-        "0xca991563e3929ae2027b7c8bda0fc580ad1c2390f7831ae814a2b5ec5c31e22d7e5efced8d66dd7eccb5fba63e85ffa6ae1583b0c5e85c2baf1a3aaf639e465f1c",
+        "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c",
       voucher: {
         id: voucherId,
         buyer: buyerAddress,
         seller: sellerAddress,
-        value: "1000000",
+        valueAggregate: "1000000",
         asset: assetAddress,
         timestamp: 1715769600,
         nonce: 0,
@@ -333,7 +333,7 @@ describe("createPaymentHeader", () => {
         id: voucherId,
         buyer: buyerAddress,
         seller: sellerAddress,
-        value: "2000000",
+        valueAggregate: "2000000",
         asset: assetAddress,
         timestamp: 1715769600,
         nonce: 1,
@@ -357,7 +357,7 @@ describe("createPaymentHeader", () => {
             id: mockSignedPayment.payload.voucher.id,
             buyer: mockSignedPayment.payload.voucher.buyer,
             seller: mockSignedPayment.payload.voucher.seller,
-            value: mockSignedPayment.payload.voucher.value,
+            valueAggregate: mockSignedPayment.payload.voucher.valueAggregate,
             asset: mockSignedPayment.payload.voucher.asset,
             timestamp: expect.any(Number),
             nonce: mockSignedPayment.payload.voucher.nonce,

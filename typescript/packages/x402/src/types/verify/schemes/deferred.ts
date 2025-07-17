@@ -24,7 +24,7 @@ export const DeferredEvmPayloadVoucherSchema = z.object({
   id: z.string().regex(HexEncoded64ByteRegex),
   buyer: z.string().regex(EvmAddressRegex),
   seller: z.string().regex(EvmAddressRegex),
-  value: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  valueAggregate: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
   asset: z.string().regex(EvmAddressRegex),
   timestamp: z.number().int().nonnegative(),
   nonce: z.number().int().nonnegative(),

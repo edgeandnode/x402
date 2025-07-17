@@ -11,7 +11,7 @@ export const typedDataTypes = {
     { name: "id", type: "bytes32" },
     { name: "buyer", type: "address" },
     { name: "seller", type: "address" },
-    { name: "value", type: "uint256" },
+    { name: "valueAggregate", type: "uint256" },
     { name: "asset", type: "address" },
     { name: "timestamp", type: "uint256" },
     { name: "nonce", type: "uint256" },

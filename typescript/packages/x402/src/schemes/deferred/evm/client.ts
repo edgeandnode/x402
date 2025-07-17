@@ -62,7 +62,7 @@ export function createNewVoucher(
     id: extra.voucher.id,
     buyer: from,
     seller: paymentRequirements.payTo,
-    value: paymentRequirements.maxAmountRequired,
+    valueAggregate: paymentRequirements.maxAmountRequired,
     asset: paymentRequirements.asset,
     timestamp: Math.floor(Date.now() / 1000),
     nonce: 0,
@@ -92,14 +92,16 @@ export async function aggregateVoucher(
     throw new Error("Invalid voucher signature");
   }
 
-  const { id, escrow, buyer, seller, value, asset, nonce, chainId } = extra.voucher;
+  const { id, escrow, buyer, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
   const newTimestamp = Math.floor(Date.now() / 1000);
 
   return {
     id,
     buyer,
     seller,
-    value: (BigInt(paymentRequirements.maxAmountRequired) + BigInt(value)).toString(),
+    valueAggregate: (
+      BigInt(paymentRequirements.maxAmountRequired) + BigInt(valueAggregate)
+    ).toString(),
     asset,
     timestamp: newTimestamp,
     nonce: nonce + 1,

@@ -19,7 +19,7 @@ export async function signVoucher<transport extends Transport, chain extends Cha
   walletClient: SignerWallet<chain, transport> | LocalAccount,
   voucher: DeferredEvmPayloadVoucher,
 ): Promise<{ signature: Hex }> {
-  const { id, buyer, seller, value, asset, timestamp, nonce, escrow, chainId } = voucher;
+  const { id, buyer, seller, valueAggregate, asset, timestamp, nonce, escrow, chainId } = voucher;
   const data = {
     types: typedDataTypes,
     primaryType: deferredVoucherPrimaryType,
@@ -33,7 +33,7 @@ export async function signVoucher<transport extends Transport, chain extends Cha
       id,
       buyer,
       seller,
-      value,
+      valueAggregate,
       asset,
       timestamp,
       nonce,
