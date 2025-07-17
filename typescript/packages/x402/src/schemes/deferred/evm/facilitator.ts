@@ -56,14 +56,22 @@ export async function verify<
   paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
 
   // Verify payload matches requirements: scheme
-  if (
-    paymentPayload.scheme !== DEFERRRED_SCHEME ||
-    paymentRequirements.scheme !== DEFERRRED_SCHEME
-  ) {
+  if (paymentPayload.scheme !== DEFERRRED_SCHEME) {
     return {
       isValid: false,
-      invalidReason: `unsupported_scheme`,
-      payer: paymentPayload.payload.voucher.buyer,
+      invalidReason: `invalid_deferred_evm_payload_scheme`,
+    };
+  }
+  if (paymentRequirements.scheme !== DEFERRRED_SCHEME) {
+    return {
+      isValid: false,
+      invalidReason: `invalid_deferred_evm_requirements_scheme`,
+    };
+  }
+  if (paymentPayload.scheme !== paymentRequirements.scheme) {
+    return {
+      isValid: false,
+      invalidReason: `invalid_deferred_evm_payload_requirements_scheme_mismatch`,
     };
   }
 
@@ -71,7 +79,7 @@ export async function verify<
   if (paymentPayload.network !== paymentRequirements.network) {
     return {
       isValid: false,
-      invalidReason: `invalid_network`,
+      invalidReason: `invalid_deferred_evm_payload_network_mismatch`,
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
