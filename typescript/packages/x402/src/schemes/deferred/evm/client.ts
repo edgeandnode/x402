@@ -16,13 +16,13 @@ import { DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
  *
- * @param from - The sender's address from which the payment will be made
+ * @param buyer - The sender's address from which the payment will be made
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
  * @returns An unsigned payment payload containing authorization details
  */
 export async function preparePaymentHeader(
-  from: Address,
+  buyer: Address,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
 ): Promise<UnsignedPaymentPayload> {
@@ -30,8 +30,8 @@ export async function preparePaymentHeader(
 
   const voucher =
     deferredPaymentRequirements.extra.type === "new"
-      ? createNewVoucher(from, deferredPaymentRequirements)
-      : await aggregateVoucher(from, deferredPaymentRequirements);
+      ? createNewVoucher(buyer, deferredPaymentRequirements)
+      : await aggregateVoucher(buyer, deferredPaymentRequirements);
 
   return {
     x402Version,
@@ -47,12 +47,12 @@ export async function preparePaymentHeader(
 /**
  * Creates a new voucher with the given payment requirements
  *
- * @param from - The sender's address from which the payment will be made
+ * @param buyer - The sender's address from which the payment will be made
  * @param paymentRequirements - The payment requirements containing scheme and network information
  * @returns The new voucher
  */
 export function createNewVoucher(
-  from: Address,
+  buyer: Address,
   paymentRequirements: PaymentRequirements,
 ): DeferredEvmPayloadVoucher {
   const extra = DeferredEvmPaymentRequirementsExtraNewVoucherSchema.parse(
@@ -61,7 +61,7 @@ export function createNewVoucher(
 
   return {
     id: extra.voucher.id,
-    buyer: from,
+    buyer: buyer,
     seller: paymentRequirements.payTo,
     valueAggregate: paymentRequirements.maxAmountRequired,
     asset: paymentRequirements.asset,
@@ -75,12 +75,12 @@ export function createNewVoucher(
 /**
  * Aggregates a voucher with new payment requirements
  *
- * @param from - The sender's address from which the payment will be made
+ * @param buyer - The sender's address from which the payment will be made
  * @param paymentRequirements - The payment requirements containing scheme and network information
  * @returns The aggregated voucher
  */
 export async function aggregateVoucher(
-  from: Address,
+  buyer: Address,
   paymentRequirements: PaymentRequirements,
 ): Promise<DeferredEvmPayloadVoucher> {
   const extra = DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema.parse(
@@ -88,12 +88,12 @@ export async function aggregateVoucher(
   );
 
   // verify signature is valid and the voucher's buyer is the client
-  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, from);
+  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
   if (!isValid) {
     throw new Error("Invalid voucher signature");
   }
 
-  const { id, escrow, buyer, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
+  const { id, escrow, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
   const newTimestamp = Math.floor(Date.now() / 1000);
 
   return {
