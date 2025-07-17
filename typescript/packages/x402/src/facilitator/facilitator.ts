@@ -64,7 +64,7 @@ export async function verify<
     } else {
       return {
         isValid: false,
-        invalidReason: "invalid_scheme",
+        invalidReason: "invalid_network",
         payer: payload.payload.voucher.buyer,
       };
     }
