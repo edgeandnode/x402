@@ -9,7 +9,6 @@ import {
   Transport,
 } from "viem";
 import { getNetworkId } from "../../../shared";
-import { getERC20Balance } from "../../../shared/evm";
 import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import {
   PaymentPayload,
@@ -157,11 +156,17 @@ export async function verify<
   // Verify buyer has sufficient asset balance
   let balance: bigint;
   try {
-    balance = await getERC20Balance(
-      client,
-      paymentPayload.payload.voucher.asset as Address,
-      paymentPayload.payload.voucher.buyer as Address,
-    );
+    const account = await client.readContract({
+      address: paymentPayload.payload.voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "accounts",
+      args: [
+        paymentPayload.payload.voucher.buyer as Address,
+        paymentPayload.payload.voucher.seller as Address,
+        paymentPayload.payload.voucher.asset as Address,
+      ],
+    });
+    balance = account.balance;
   } catch {
     return {
       isValid: false,

@@ -30,4 +30,50 @@ export const deferredEscrowABI = [
     ],
     outputs: [],
   },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "buyer",
+        type: "address",
+      },
+      {
+        internalType: "address",
+        name: "seller",
+        type: "address",
+      },
+      {
+        internalType: "address",
+        name: "asset",
+        type: "address",
+      },
+    ],
+    name: "accounts",
+    outputs: [
+      {
+        components: [
+          {
+            internalType: "uint256",
+            name: "balance",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "thawingAmount",
+            type: "uint256",
+          },
+          {
+            internalType: "uint64",
+            name: "thawEndTime",
+            type: "uint64",
+          },
+        ],
+        internalType: "struct IDeferredPaymentEscrow.EscrowAccount",
+        name: "",
+        type: "tuple",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
