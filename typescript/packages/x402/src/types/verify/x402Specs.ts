@@ -20,7 +20,9 @@ import { EvmOrSvmAddress } from "..";
 export const schemes = ["exact", "deferred"] as const;
 export const ErrorReasons = [
   "insufficient_funds",
+  "insufficient_funds_contract_call_failed",
   "invalid_network",
+  "invalid_network_unsupported",
   "invalid_payload",
   "invalid_payment_requirements",
   "invalid_scheme",

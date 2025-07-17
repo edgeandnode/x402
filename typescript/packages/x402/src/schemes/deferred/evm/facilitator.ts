@@ -125,10 +125,14 @@ export async function verify<
   let chainId: number;
   try {
     chainId = getNetworkId(paymentRequirements.network);
-    if (chainId !== paymentPayload.payload.voucher.chainId) {
-      throw new Error();
-    }
   } catch {
+    return {
+      isValid: false,
+      invalidReason: `invalid_network_unsupported`,
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+  if (chainId !== paymentPayload.payload.voucher.chainId) {
     return {
       isValid: false,
       invalidReason: `invalid_deferred_evm_payload_chain_id`,
@@ -151,16 +155,21 @@ export async function verify<
   }
 
   // Verify buyer has sufficient asset balance
+  let balance: bigint;
   try {
-    const balance = await getERC20Balance(
+    balance = await getERC20Balance(
       client,
       paymentPayload.payload.voucher.asset as Address,
       paymentPayload.payload.voucher.buyer as Address,
     );
-    if (balance < BigInt(paymentPayload.payload.voucher.valueAggregate)) {
-      throw new Error();
-    }
   } catch {
+    return {
+      isValid: false,
+      invalidReason: "insufficient_funds_contract_call_failed",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+  if (balance < BigInt(paymentPayload.payload.voucher.valueAggregate)) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
@@ -169,17 +178,22 @@ export async function verify<
   }
 
   // Verify voucher id has not been already claimed
+  let isCollected: boolean;
   try {
-    const isCollected = await client.readContract({
+    isCollected = await client.readContract({
       address: paymentPayload.payload.voucher.escrow as Address,
       abi: deferredEscrowABI,
       functionName: "isCollected",
       args: [paymentPayload.payload.voucher.id as Hex],
     });
-    if (isCollected) {
-      throw new Error();
-    }
   } catch {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_contract_call_failed",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+  if (isCollected) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_already_claimed",

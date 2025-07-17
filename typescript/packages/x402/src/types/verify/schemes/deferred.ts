@@ -15,6 +15,7 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_recipient_mismatch",
   "invalid_deferred_evm_payload_asset_mismatch",
   "invalid_deferred_evm_payload_voucher_already_claimed",
+  "invalid_deferred_evm_payload_voucher_contract_call_failed",
   "invalid_deferred_evm_payload_signature",
   "invalid_deferred_evm_payload_no_longer_valid",
 ] as const;
