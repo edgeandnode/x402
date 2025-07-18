@@ -13,7 +13,6 @@ export const DEFERRRED_SCHEME = "deferred";
 export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_scheme",
   "invalid_deferred_evm_requirements_scheme",
-  "invalid_deferred_evm_payload_requirements_scheme_mismatch",
   "invalid_deferred_evm_payload_network_mismatch",
   "invalid_deferred_evm_payload_chain_id",
   "invalid_deferred_evm_payload_voucher_value",

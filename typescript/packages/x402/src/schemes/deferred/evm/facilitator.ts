@@ -70,12 +70,6 @@ export async function verify<
       invalidReason: `invalid_deferred_evm_requirements_scheme`,
     };
   }
-  if (paymentPayload.scheme !== paymentRequirements.scheme) {
-    return {
-      isValid: false,
-      invalidReason: `invalid_deferred_evm_payload_requirements_scheme_mismatch`,
-    };
-  }
 
   // Verify payload matches requirements: network
   if (paymentPayload.network !== paymentRequirements.network) {
