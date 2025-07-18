@@ -101,7 +101,7 @@ export async function verify<
     if (
       BigInt(paymentPayload.payload.voucher.valueAggregate) <
       BigInt(paymentRequirements.maxAmountRequired) +
-        BigInt(paymentRequirements.extra.voucher.valueAggregate)
+      BigInt(paymentRequirements.extra.voucher.valueAggregate)
     ) {
       return {
         isValid: false,
@@ -171,7 +171,7 @@ export async function verify<
     };
   }
 
-  // Verify buyer has sufficient asset balance
+  // Verify buyer has sufficient asset balance in the escrow contract
   let balance: bigint;
   try {
     const account = await client.readContract({
