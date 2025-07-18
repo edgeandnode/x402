@@ -20,6 +20,8 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_asset_mismatch",
   "invalid_deferred_evm_payload_signature",
   "invalid_deferred_evm_payload_no_longer_valid",
+  "invalid_deferred_evm_payload_voucher_expired",
+  "invalid_deferred_evm_payload_timestamp",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -33,6 +35,7 @@ export const DeferredEvmPayloadVoucherSchema = z.object({
   nonce: z.number().int().nonnegative(),
   escrow: z.string().regex(EvmAddressRegex),
   chainId: z.number().int().nonnegative(),
+  expiry: z.number().int().nonnegative(),
 });
 export type DeferredEvmPayloadVoucher = z.infer<typeof DeferredEvmPayloadVoucherSchema>;
 

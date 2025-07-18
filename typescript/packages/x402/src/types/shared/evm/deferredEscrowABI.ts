@@ -125,11 +125,11 @@ export const deferredEscrowABI = [
             name: "chainId",
             type: "uint256",
           },
-          // {
-          //   internalType: "uint64",
-          //   name: "expiry",
-          //   type: "uint64",
-          // },
+          {
+            internalType: "uint64",
+            name: "expiry",
+            type: "uint64",
+          },
         ],
         internalType: "struct IDeferredPaymentEscrow.Voucher",
         name: "voucher",

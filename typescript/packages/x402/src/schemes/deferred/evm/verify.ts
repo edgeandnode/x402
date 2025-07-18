@@ -15,6 +15,7 @@ import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
  * - ✅ Verify payTo is voucher seller
  * - ✅ Verify voucher asset matches payment requirements
  * - ✅ Validates the voucher chainId matches the chain specified in the payment requirements
+ * - ✅ Validates the voucher expiration and timestamp dates make sense
  *
  * @param paymentPayload - The payment payload to verify
  * @param paymentRequirements - The payment requirements to verify
@@ -114,6 +115,23 @@ export async function verifyPaymentRequirements(
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
+
+  // Verify payload matches requirements: voucher expiration and timestamp
+  const now = Math.floor(Date.now() / 1000);
+  if (paymentPayload.payload.voucher.expiry < now) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_expired",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+  if (paymentPayload.payload.voucher.timestamp > now) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_timestamp",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
 }
 
 /**
@@ -200,6 +218,7 @@ export async function verifyOnchainState<
           nonce: BigInt(paymentPayload.payload.voucher.nonce),
           escrow: paymentPayload.payload.voucher.escrow as Address,
           chainId: BigInt(paymentPayload.payload.voucher.chainId),
+          expiry: BigInt(paymentPayload.payload.voucher.expiry),
         },
       ],
     });

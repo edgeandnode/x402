@@ -21,7 +21,7 @@ const escrowAddress = "0xffffff12345678901234567890123456789fffff";
 const assetAddress = "0x1111111111111111111111111111111111111111";
 const voucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
 const voucherSignature =
-  "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c";
+  "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b";
 
 describe("verifyPaymentRequirements", () => {
   const mockVoucher = {
@@ -34,6 +34,7 @@ describe("verifyPaymentRequirements", () => {
     nonce: 0,
     escrow: escrowAddress,
     chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
   };
 
   const mockPaymentPayload: DeferredPaymentPayload = {
@@ -234,6 +235,46 @@ describe("verifyPaymentRequirements", () => {
       payer: buyerAddress,
     });
   });
+
+  it("should return error if voucher is expired", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const invalidPayload = {
+      ...mockPaymentPayload,
+      payload: {
+        ...mockPaymentPayload.payload,
+        voucher: {
+          ...mockVoucher,
+          expiry: now - 1, // 1 second in the past
+        },
+      },
+    };
+    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_expired",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if voucher timestamp is in the future", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const invalidPayload = {
+      ...mockPaymentPayload,
+      payload: {
+        ...mockPaymentPayload.payload,
+        voucher: {
+          ...mockVoucher,
+          timestamp: now + 3600, // 1 hour in the future
+        },
+      },
+    };
+    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_timestamp",
+      payer: buyerAddress,
+    });
+  });
 });
 
 describe("verifyVoucherSignature", () => {
@@ -253,6 +294,7 @@ describe("verifyVoucherSignature", () => {
         nonce: 0,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };
@@ -304,6 +346,7 @@ describe("verifyOnchainState", () => {
         nonce: 0,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };

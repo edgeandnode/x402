@@ -13,10 +13,11 @@ export const typedDataTypes = {
     { name: "seller", type: "address" },
     { name: "valueAggregate", type: "uint256" },
     { name: "asset", type: "address" },
-    { name: "timestamp", type: "uint256" },
+    { name: "timestamp", type: "uint64" },
     { name: "nonce", type: "uint256" },
     { name: "escrow", type: "address" },
     { name: "chainId", type: "uint256" },
+    { name: "expiry", type: "uint64" },
   ],
 };
 

@@ -14,6 +14,8 @@ import {
 import { signVoucher, verifyVoucher } from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
 
+const EXPIRY_TIME = 60 * 60 * 24 * 30; // 30 days
+
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
  *
@@ -70,6 +72,7 @@ export function createNewVoucher(
     nonce: 0,
     escrow: extra.voucher.escrow,
     chainId: getNetworkId(paymentRequirements.network),
+    expiry: Math.floor(Date.now() / 1000) + EXPIRY_TIME,
   };
 }
 
@@ -87,13 +90,9 @@ export async function aggregateVoucher(
   const extra = DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema.parse(
     paymentRequirements.extra,
   );
-  const { id, escrow, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
-
-  // verify signature is valid and the voucher's buyer is the client
-  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
-  if (!isValid) {
-    throw new Error("Invalid voucher signature");
-  }
+  const { id, escrow, seller, valueAggregate, asset, nonce, chainId, expiry, timestamp } =
+    extra.voucher;
+  const now = Math.floor(Date.now() / 1000);
 
   // verify previous voucher matches payment requirements
   if (paymentRequirements.payTo !== seller) {
@@ -105,6 +104,18 @@ export async function aggregateVoucher(
   if (getNetworkId(paymentRequirements.network) !== chainId) {
     throw new Error("Invalid voucher chainId");
   }
+  if (now > expiry) {
+    throw new Error("Voucher expired");
+  }
+  if (now < timestamp) {
+    throw new Error("Voucher timestamp is in the future");
+  }
+
+  // verify signature is valid and the voucher's buyer is the client
+  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
+  if (!isValid) {
+    throw new Error("Invalid voucher signature");
+  }
 
   return {
     id,
@@ -114,10 +125,11 @@ export async function aggregateVoucher(
       BigInt(paymentRequirements.maxAmountRequired) + BigInt(valueAggregate)
     ).toString(),
     asset,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: now,
     nonce: nonce + 1,
     escrow,
     chainId,
+    expiry: now + EXPIRY_TIME,
   };
 }
 

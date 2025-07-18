@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSigner } from "../../../types/shared/evm";
 import { signVoucher, verifyVoucher } from "./sign";
+import { privateKeyToAccount } from "viem/accounts";
 
 const buyer = createSigner(
   "base-sepolia",
@@ -24,10 +25,11 @@ describe("voucher signature", () => {
     nonce: 0,
     escrow: escrowAddress,
     chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
   };
 
   const mockVoucherSignature =
-    "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c";
+    "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -53,5 +55,49 @@ describe("voucher signature", () => {
   it("should return false if voucher signature is valid but for a different buyer", async () => {
     const isValid = await verifyVoucher(mockVoucher, mockVoucherSignature, anotherBuyerAddress);
     expect(isValid).toBe(false);
+  });
+
+  it("should sign a voucher using a LocalAccount", async () => {
+    const localAccount = privateKeyToAccount(
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+    const signature = await signVoucher(localAccount, mockVoucher);
+
+    expect(signature.signature).toBe(mockVoucherSignature);
+  });
+
+  it("should verify a voucher signed by a LocalAccount", async () => {
+    const localAccount = privateKeyToAccount(
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+    const signature = await signVoucher(localAccount, mockVoucher);
+
+    const isValid = await verifyVoucher(mockVoucher, signature.signature, localAccount.address);
+    expect(isValid).toBe(true);
+  });
+
+  it("should throw error if wallet client does not support signTypedData", async () => {
+    const invalidWallet = {
+      account: { address: buyerAddress },
+      // Missing signTypedData method
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await expect(signVoucher(invalidWallet, mockVoucher)).rejects.toThrow(
+      "Invalid wallet client provided does not support signTypedData",
+    );
+  });
+
+  it("should throw error if LocalAccount does not support signTypedData", async () => {
+    const invalidAccount = {
+      address: buyerAddress,
+      type: "local",
+      // Missing signTypedData method
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await expect(signVoucher(invalidAccount, mockVoucher)).rejects.toThrow(
+      "Invalid wallet client provided does not support signTypedData",
+    );
   });
 });

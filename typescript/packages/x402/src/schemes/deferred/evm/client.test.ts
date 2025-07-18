@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSigner } from "../../../types/shared/evm";
 import { PaymentRequirements } from "../../../types/verify";
-import { createPaymentHeader, preparePaymentHeader, signPaymentHeader } from "./client";
+import {
+  createPaymentHeader,
+  preparePaymentHeader,
+  signPaymentHeader,
+  createNewVoucher,
+} from "./client";
 import {
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
   DeferredPaymentPayloadSchema,
@@ -47,7 +52,7 @@ describe("preparePaymentHeader: new voucher", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Set a fixed time for consistent testing
-    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+    vi.setSystemTime(new Date("2024-05-20T00:00:00Z"));
     vi.clearAllMocks();
   });
 
@@ -77,6 +82,7 @@ describe("preparePaymentHeader: new voucher", () => {
           nonce: 0,
           escrow: escrowAddress,
           chainId: 84532,
+          expiry: expect.any(Number),
         },
       },
     });
@@ -108,6 +114,87 @@ describe("preparePaymentHeader: new voucher", () => {
   });
 });
 
+describe("createNewVoucher", () => {
+  const mockPaymentRequirements: PaymentRequirements = {
+    scheme: "deferred",
+    network: "base-sepolia",
+    maxAmountRequired: "1000000",
+    resource: "https://example.com/resource",
+    description: "Test resource",
+    mimeType: "application/json",
+    payTo: sellerAddress,
+    maxTimeoutSeconds: 300,
+    asset: assetAddress,
+    extra: {
+      type: "new",
+      voucher: {
+        id: voucherId,
+        escrow: escrowAddress,
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Set a fixed time for consistent testing
+    vi.setSystemTime(new Date("2024-05-20T00:00:00Z"));
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should create a valid new voucher with correct properties", () => {
+    const voucher = createNewVoucher(buyerAddress, mockPaymentRequirements);
+
+    expect(voucher).toEqual({
+      id: voucherId,
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      valueAggregate: "1000000",
+      asset: assetAddress,
+      timestamp: Math.floor(Date.now() / 1000),
+      nonce: 0,
+      escrow: escrowAddress,
+      chainId: 84532,
+      expiry: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30, // 30 days
+    });
+  });
+
+  it("should use buyer address as provided", () => {
+    const differentBuyerAddress = "0x9876543210987654321098765432109876543210";
+    const voucher = createNewVoucher(differentBuyerAddress, mockPaymentRequirements);
+
+    expect(voucher.buyer).toBe(differentBuyerAddress);
+  });
+
+  it("should set nonce to 0 for new vouchers", () => {
+    const voucher = createNewVoucher(buyerAddress, mockPaymentRequirements);
+
+    expect(voucher.nonce).toBe(0);
+  });
+
+  it("should calculate expiry time correctly", () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const voucher = createNewVoucher(buyerAddress, mockPaymentRequirements);
+
+    expect(voucher.expiry).toBe(currentTime + 60 * 60 * 24 * 30);
+  });
+
+  it("should throw if payment requirements are invalid", () => {
+    const invalidRequirements = {
+      ...mockPaymentRequirements,
+      extra: {
+        type: "new",
+        // Missing voucher property
+      },
+    } as PaymentRequirements;
+
+    expect(() => createNewVoucher(buyerAddress, invalidRequirements)).toThrow();
+  });
+});
+
 describe("preparePaymentHeader: aggregated voucher", () => {
   const mockAggregatedPaymentRequirements: PaymentRequirements = {
     scheme: "deferred",
@@ -122,7 +209,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
     extra: {
       type: "aggregation",
       signature:
-        "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c",
+        "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b",
       voucher: {
         id: voucherId,
         buyer: buyerAddress,
@@ -133,6 +220,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
         nonce: 0,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };
@@ -140,7 +228,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Set a fixed time for consistent testing
-    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+    vi.setSystemTime(new Date("2024-05-20T00:00:00Z"));
     vi.clearAllMocks();
   });
 
@@ -178,6 +266,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
           nonce: 1,
           escrow: escrowAddress,
           chainId: 84532,
+          expiry: expect.any(Number),
         },
       },
     });
@@ -206,6 +295,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
       "nonce",
       "escrow",
       "chainId",
+      "expiry",
     ];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
@@ -226,6 +316,7 @@ describe("preparePaymentHeader: aggregated voucher", () => {
       "nonce",
       "escrow",
       "chainId",
+      "expiry",
     ];
     for (const field of requiredFields) {
       const badPaymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
@@ -238,6 +329,55 @@ describe("preparePaymentHeader: aggregated voucher", () => {
   it("should handle different x402 versions", async () => {
     const result = await preparePaymentHeader(buyerAddress, 2, mockAggregatedPaymentRequirements);
     expect(result.x402Version).toBe(2);
+  });
+
+  it("should revert if voucher seller doesn't match payment requirements", async () => {
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    paymentRequirements.payTo = "0x9999999999999999999999999999999999999999";
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Invalid voucher seller",
+    );
+  });
+
+  it("should revert if voucher asset doesn't match payment requirements", async () => {
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    paymentRequirements.asset = "0x2222222222222222222222222222222222222222";
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Invalid voucher asset",
+    );
+  });
+
+  it("should revert if voucher chainId doesn't match payment requirements", async () => {
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    paymentRequirements.network = "base";
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Invalid voucher chainId",
+    );
+  });
+
+  it("should revert if voucher is expired", async () => {
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    // Set voucher expiry to a past date
+    // @ts-expect-error - TODO: fix this
+    paymentRequirements.extra!.voucher.expiry = 1715769600 - 1; // 1 second before timestamp
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Voucher expired",
+    );
+  });
+
+  it("should revert if voucher timestamp is in the future", async () => {
+    const paymentRequirements = structuredClone(mockAggregatedPaymentRequirements);
+    // Set voucher timestamp to future
+    // @ts-expect-error - TODO: fix this
+    paymentRequirements.extra!.voucher.timestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour in future
+
+    await expect(preparePaymentHeader(buyerAddress, 1, paymentRequirements)).rejects.toThrow(
+      "Voucher timestamp is in the future",
+    );
   });
 });
 
@@ -258,11 +398,12 @@ describe("signPaymentHeader", () => {
         nonce: 0,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };
   const mockVoucherSignature =
-    "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c";
+    "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b";
 
   it("should sign the payment header and return a complete payload", async () => {
     const signedPaymentPayload = await signPaymentHeader(buyer, mockUnsignedHeader);
@@ -307,7 +448,7 @@ describe("createPaymentHeader", () => {
     extra: {
       type: "aggregation",
       signature:
-        "0xabf0d28a3df19861fb7b4624d775a8e9064f3d8b285a8c26c5dfd03f445bd1c8331b706a3ac742068bbb1e08795cf0ea7c7e8cb81a715362005f7cde52e2b7e31c",
+        "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b",
       voucher: {
         id: voucherId,
         buyer: buyerAddress,
@@ -318,6 +459,7 @@ describe("createPaymentHeader", () => {
         nonce: 0,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };
@@ -339,9 +481,17 @@ describe("createPaymentHeader", () => {
         nonce: 1,
         escrow: escrowAddress,
         chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
       },
     },
   };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Set a fixed time for consistent testing
+    vi.setSystemTime(new Date("2024-05-20T00:00:00Z"));
+    vi.clearAllMocks();
+  });
 
   it("should create and encode a payment header", async () => {
     const result = await createPaymentHeader(buyer, 1, mockPaymentRequirements);
@@ -363,6 +513,7 @@ describe("createPaymentHeader", () => {
             nonce: mockSignedPayment.payload.voucher.nonce,
             escrow: mockSignedPayment.payload.voucher.escrow,
             chainId: mockSignedPayment.payload.voucher.chainId,
+            expiry: expect.any(Number),
           }),
         }),
       }),
