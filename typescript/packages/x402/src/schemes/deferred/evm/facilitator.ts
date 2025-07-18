@@ -36,13 +36,22 @@ export async function verify<
   paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
 
   // Verify the payment payload matches the payment requirements
-  await verifyPaymentRequirements(paymentPayload, paymentRequirements);
+  const requirementsResult = await verifyPaymentRequirements(paymentPayload, paymentRequirements);
+  if (requirementsResult) {
+    return requirementsResult;
+  }
 
   // Verify voucher signature is valid
-  await verifyVoucherSignature(paymentPayload);
+  const signatureResult = await verifyVoucherSignature(paymentPayload);
+  if (signatureResult) {
+    return signatureResult;
+  }
 
   // Verify the onchain state allows the payment to be settled
-  await verifyOnchainState(client, paymentPayload, paymentRequirements);
+  const onchainResult = await verifyOnchainState(client, paymentPayload, paymentRequirements);
+  if (onchainResult) {
+    return onchainResult;
+  }
 
   return {
     isValid: true,

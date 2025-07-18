@@ -1,6 +1,6 @@
 import { Account, Chain, Address, Hex, Transport, getAddress } from "viem";
 import { DeferredPaymentPayload, DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
-import { PaymentRequirements } from "../../../types";
+import { PaymentRequirements, VerifyResponse } from "../../../types";
 import { getNetworkId } from "../../../shared";
 import { verifyVoucher } from "./sign";
 import { ConnectedClient } from "../../../types/shared/evm/wallet";
@@ -24,7 +24,7 @@ import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 export async function verifyPaymentRequirements(
   paymentPayload: DeferredPaymentPayload,
   paymentRequirements: PaymentRequirements,
-) {
+): Promise<VerifyResponse | undefined> {
   // Verify payload matches requirements: scheme
   if (paymentPayload.scheme !== DEFERRRED_SCHEME) {
     return {
@@ -143,7 +143,9 @@ export async function verifyPaymentRequirements(
  * @param paymentPayload - The payment payload to verify
  * @returns The payment requirements if valid, otherwise an error object
  */
-export async function verifyVoucherSignature(paymentPayload: DeferredPaymentPayload) {
+export async function verifyVoucherSignature(
+  paymentPayload: DeferredPaymentPayload,
+): Promise<VerifyResponse | undefined> {
   const voucherSignatureIsValid = await verifyVoucher(
     paymentPayload.payload.voucher,
     paymentPayload.payload.signature as Hex,
@@ -178,7 +180,7 @@ export async function verifyOnchainState<
   client: ConnectedClient<transport, chain, account>,
   paymentPayload: DeferredPaymentPayload,
   paymentRequirements: PaymentRequirements,
-) {
+): Promise<VerifyResponse | undefined> {
   let chainId: number;
   try {
     chainId = getNetworkId(paymentRequirements.network);
