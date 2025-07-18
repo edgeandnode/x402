@@ -145,7 +145,6 @@ export async function verifyVoucherSignature(paymentPayload: DeferredPaymentPayl
  *
  * - ✅ (on-chain) Verifies the client is connected to the chain specified in the payment requirements
  * - ✅ (on-chain) Verifies buyer has sufficient asset balance
- * - ✅ (on-chain) Verifies the voucher id has not been already claimed
  * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param client - The client to use for the onchain state verification
@@ -183,19 +182,27 @@ export async function verifyOnchainState<
   }
 
   // Verify buyer has sufficient asset balance in the escrow contract
-  let balance: bigint;
+  // We delegate the actual calculation to the escrow contract
+  let isVoucherCollectable: boolean;
   try {
-    const account = await client.readContract({
+    isVoucherCollectable = await client.readContract({
       address: paymentPayload.payload.voucher.escrow as Address,
       abi: deferredEscrowABI,
-      functionName: "accounts",
+      functionName: "isVoucherCollectable",
       args: [
-        paymentPayload.payload.voucher.buyer as Address,
-        paymentPayload.payload.voucher.seller as Address,
-        paymentPayload.payload.voucher.asset as Address,
+        {
+          id: paymentPayload.payload.voucher.id as Hex,
+          buyer: paymentPayload.payload.voucher.buyer as Address,
+          seller: paymentPayload.payload.voucher.seller as Address,
+          valueAggregate: BigInt(paymentPayload.payload.voucher.valueAggregate),
+          asset: paymentPayload.payload.voucher.asset as Address,
+          timestamp: BigInt(paymentPayload.payload.voucher.timestamp),
+          nonce: BigInt(paymentPayload.payload.voucher.nonce),
+          escrow: paymentPayload.payload.voucher.escrow as Address,
+          chainId: BigInt(paymentPayload.payload.voucher.chainId),
+        },
       ],
     });
-    balance = account.balance;
   } catch {
     return {
       isValid: false,
@@ -203,34 +210,10 @@ export async function verifyOnchainState<
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
-  if (balance < BigInt(paymentPayload.payload.voucher.valueAggregate)) {
+  if (!isVoucherCollectable) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
-      payer: paymentPayload.payload.voucher.buyer,
-    };
-  }
-
-  // Verify voucher id has not been already claimed
-  let isCollected: boolean;
-  try {
-    isCollected = await client.readContract({
-      address: paymentPayload.payload.voucher.escrow as Address,
-      abi: deferredEscrowABI,
-      functionName: "isCollected",
-      args: [paymentPayload.payload.voucher.id as Hex],
-    });
-  } catch {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_contract_call_failed",
-      payer: paymentPayload.payload.voucher.buyer,
-    };
-  }
-  if (isCollected) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_already_claimed",
       payer: paymentPayload.payload.voucher.buyer,
     };
   }

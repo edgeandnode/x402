@@ -343,9 +343,7 @@ describe("verifyOnchainState", () => {
   });
 
   it("should return undefined for valid onchain state", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce({ balance: BigInt("2000000") })
-      .mockResolvedValueOnce(false);
+    vi.mocked(mockClient.readContract).mockResolvedValueOnce(true);
 
     const result = await verifyOnchainState(
       mockClient,
@@ -400,9 +398,7 @@ describe("verifyOnchainState", () => {
   });
 
   it("should return error if insufficient balance", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce({ balance: BigInt("500000") })
-      .mockResolvedValueOnce(false);
+    vi.mocked(mockClient.readContract).mockResolvedValueOnce(false);
 
     const result = await verifyOnchainState(
       mockClient,
@@ -412,40 +408,6 @@ describe("verifyOnchainState", () => {
     expect(result).toEqual({
       isValid: false,
       invalidReason: "insufficient_funds",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if voucher id check fails", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce({ balance: BigInt("2000000") })
-      .mockRejectedValueOnce(new Error("Contract call failed"));
-
-    const result = await verifyOnchainState(
-      mockClient,
-      mockPaymentPayload,
-      mockPaymentRequirements,
-    );
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_contract_call_failed",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if voucher already claimed", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce({ balance: BigInt("2000000") })
-      .mockResolvedValueOnce(true);
-
-    const result = await verifyOnchainState(
-      mockClient,
-      mockPaymentPayload,
-      mockPaymentRequirements,
-    );
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_already_claimed",
       payer: buyerAddress,
     });
   });

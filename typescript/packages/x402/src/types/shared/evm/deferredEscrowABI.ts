@@ -76,4 +76,75 @@ export const deferredEscrowABI = [
     stateMutability: "view",
     type: "function",
   },
+  {
+    inputs: [
+      {
+        components: [
+          {
+            internalType: "bytes32",
+            name: "id",
+            type: "bytes32",
+          },
+          {
+            internalType: "address",
+            name: "buyer",
+            type: "address",
+          },
+          {
+            internalType: "address",
+            name: "seller",
+            type: "address",
+          },
+          {
+            internalType: "uint256",
+            name: "valueAggregate",
+            type: "uint256",
+          },
+          {
+            internalType: "address",
+            name: "asset",
+            type: "address",
+          },
+          {
+            internalType: "uint64",
+            name: "timestamp",
+            type: "uint64",
+          },
+          {
+            internalType: "uint256",
+            name: "nonce",
+            type: "uint256",
+          },
+          {
+            internalType: "address",
+            name: "escrow",
+            type: "address",
+          },
+          {
+            internalType: "uint256",
+            name: "chainId",
+            type: "uint256",
+          },
+          // {
+          //   internalType: "uint64",
+          //   name: "expiry",
+          //   type: "uint64",
+          // },
+        ],
+        internalType: "struct IDeferredPaymentEscrow.Voucher",
+        name: "voucher",
+        type: "tuple",
+      },
+    ],
+    name: "isVoucherCollectable",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
