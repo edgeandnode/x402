@@ -35,6 +35,7 @@ import { verifyVoucherSignature } from "./sign";
  *    - ✅ Verify voucher asset matches payment requirements
  * - ✅ Validates the signature is valid
  * - ✅ Validates the voucher chainId matches the chain specified in the payment requirements
+ * - ✅ (on-chain) Verifies the client is connected to the chain specified in the payment requirements
  * - ✅ (on-chain) Verifies buyer has sufficient asset balance
  * - ✅ (on-chain) Verifies the voucher id has not been already claimed
  * - ⌛ TODO: Simulate the transaction to ensure it will succeed
@@ -163,6 +164,15 @@ export async function verify<
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+
+  // Verify the client is connected to the chain specified in the payment requirements
+  if (client.chain.id !== chainId) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_client_network",
       payer: paymentPayload.payload.voucher.buyer,
     };
   }

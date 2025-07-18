@@ -25,6 +25,7 @@ export const ErrorReasons = [
   "insufficient_funds_contract_call_failed",
   "invalid_network",
   "invalid_network_unsupported",
+  "invalid_client_network",
   "invalid_payload",
   "invalid_payment_requirements",
   "invalid_scheme",
