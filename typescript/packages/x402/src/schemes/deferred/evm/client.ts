@@ -1,7 +1,7 @@
 import { Address, Chain, Hex, LocalAccount, Transport } from "viem";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
-import { signVoucher, verifyVoucherSignature } from "./sign";
+import { signVoucher, verifyVoucher } from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
 import {
   DeferredEvmPayloadVoucher,
@@ -86,15 +86,24 @@ export async function aggregateVoucher(
   const extra = DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema.parse(
     paymentRequirements.extra,
   );
+  const { id, escrow, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
 
   // verify signature is valid and the voucher's buyer is the client
-  const isValid = await verifyVoucherSignature(extra.voucher, extra.signature as Hex, buyer);
+  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
   if (!isValid) {
     throw new Error("Invalid voucher signature");
   }
 
-  const { id, escrow, seller, valueAggregate, asset, nonce, chainId } = extra.voucher;
-  const newTimestamp = Math.floor(Date.now() / 1000);
+  // verify previous voucher matches payment requirements
+  if (paymentRequirements.payTo !== seller) {
+    throw new Error("Invalid voucher seller");
+  }
+  if (paymentRequirements.asset !== asset) {
+    throw new Error("Invalid voucher asset");
+  }
+  if (getNetworkId(paymentRequirements.network) !== chainId) {
+    throw new Error("Invalid voucher chainId");
+  }
 
   return {
     id,
@@ -104,7 +113,7 @@ export async function aggregateVoucher(
       BigInt(paymentRequirements.maxAmountRequired) + BigInt(valueAggregate)
     ).toString(),
     asset,
-    timestamp: newTimestamp,
+    timestamp: Math.floor(Date.now() / 1000),
     nonce: nonce + 1,
     escrow,
     chainId,
