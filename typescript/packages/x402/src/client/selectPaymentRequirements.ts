@@ -1,7 +1,6 @@
-import { Network, PaymentRequirements } from "../types";
 import { getUsdcChainConfigForChain } from "../shared/evm";
 import { getNetworkId } from "../shared/network";
-import { EXACT_SCHEME } from "../types/verify/schemes/exact";
+import { EXACT_SCHEME, Network, PaymentRequirements } from "../types";
 
 /**
  * Default selector for payment requirements.
@@ -14,7 +13,7 @@ import { EXACT_SCHEME } from "../types/verify/schemes/exact";
  * @returns The payment requirement that is the most appropriate for the user.
  */
 export function selectPaymentRequirements(
-  paymentRequirements: PaymentRequirements[],
+  paymentRequirements: Array<PaymentRequirements>,
   network?: Network | Network[],
   scheme?: typeof EXACT_SCHEME,
 ): PaymentRequirements {
@@ -42,7 +41,10 @@ export function selectPaymentRequirements(
   // Filter down to USDC requirements
   const usdcRequirements = broadlyAcceptedPaymentRequirements.filter(requirement => {
     // If the address is a USDC address, we return it.
-    return requirement.asset === getUsdcChainConfigForChain(getNetworkId(requirement.network))?.usdcAddress;
+    return (
+      requirement.asset ===
+      getUsdcChainConfigForChain(getNetworkId(requirement.network))?.usdcAddress
+    );
   });
 
   // Prioritize USDC requirements if available
@@ -65,4 +67,4 @@ export function selectPaymentRequirements(
  * @param scheme - The scheme to check against. If not provided, the scheme will not be checked.
  * @returns The payment requirement that is the most appropriate for the user.
  */
-export type PaymentRequirementsSelector = (paymentRequirements: PaymentRequirements[], network?: Network | Network[], scheme?: typeof EXACT_SCHEME) => PaymentRequirements;
+export type PaymentRequirementsSelector = (paymentRequirements: Array<PaymentRequirements>, network?: Network | Network[], scheme?: typeof EXACT_SCHEME) => PaymentRequirements;

@@ -1,17 +1,18 @@
 import { Address, Chain, Hex, LocalAccount, Transport } from "viem";
+import { getNetworkId } from "../../../shared/network";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
-import { signVoucher, verifyVoucher } from "./sign";
-import { encodePayment } from "./utils/paymentUtils";
 import {
   DeferredEvmPayloadVoucher,
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
   DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
   DeferredPaymentRequirementsSchema,
+  DEFERRRED_SCHEME,
+  UnsignedDeferredPaymentPayload,
   UnsignedDeferredPaymentPayloadSchema,
 } from "../../../types/verify/schemes/deferred";
-import { getNetworkId } from "../../../shared/network";
-import { DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
+import { signVoucher, verifyVoucher } from "./sign";
+import { encodePayment } from "./utils/paymentUtils";
 
 /**
  * Prepares an unsigned payment header with the given sender address and payment requirements.
@@ -25,7 +26,7 @@ export async function preparePaymentHeader(
   buyer: Address,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
-): Promise<UnsignedPaymentPayload> {
+): Promise<UnsignedDeferredPaymentPayload> {
   const deferredPaymentRequirements = DeferredPaymentRequirementsSchema.parse(paymentRequirements);
 
   const voucher =
@@ -41,7 +42,7 @@ export async function preparePaymentHeader(
       signature: undefined,
       voucher: voucher,
     },
-  };
+  } as const satisfies UnsignedDeferredPaymentPayload;
 }
 
 /**
