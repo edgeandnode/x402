@@ -21,7 +21,7 @@ const escrowAddress = "0xffffff12345678901234567890123456789fffff";
 const assetAddress = "0x1111111111111111111111111111111111111111";
 const voucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
 const voucherSignature =
-  "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b";
+  "0x899b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c";
 
 describe("verifyPaymentRequirements", () => {
   const mockVoucher = {
@@ -386,7 +386,9 @@ describe("verifyOnchainState", () => {
   });
 
   it("should return undefined for valid onchain state", async () => {
-    vi.mocked(mockClient.readContract).mockResolvedValueOnce(true);
+    vi.mocked(mockClient.readContract)
+      .mockResolvedValueOnce([BigInt(1_000_000)])
+      .mockResolvedValueOnce({ balance: BigInt(10_000_000) });
 
     const result = await verifyOnchainState(
       mockClient,
@@ -426,7 +428,7 @@ describe("verifyOnchainState", () => {
     });
   });
 
-  it("should return error if balance check fails", async () => {
+  it("should return error if outstanding amount check fails", async () => {
     vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
     const result = await verifyOnchainState(
       mockClient,
@@ -435,13 +437,31 @@ describe("verifyOnchainState", () => {
     );
     expect(result).toEqual({
       isValid: false,
-      invalidReason: "insufficient_funds_contract_call_failed",
+      invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if balance check fails", async () => {
+    vi.mocked(mockClient.readContract)
+      .mockResolvedValueOnce([BigInt(1_000_000)])
+      .mockRejectedValueOnce(new Error("Contract call failed"));
+    const result = await verifyOnchainState(
+      mockClient,
+      mockPaymentPayload,
+      mockPaymentRequirements,
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_contract_call_failed_account",
       payer: buyerAddress,
     });
   });
 
   it("should return error if insufficient balance", async () => {
-    vi.mocked(mockClient.readContract).mockResolvedValueOnce(false);
+    vi.mocked(mockClient.readContract)
+      .mockResolvedValueOnce([BigInt(1_000_000)])
+      .mockResolvedValueOnce({ balance: BigInt(100_000) });
 
     const result = await verifyOnchainState(
       mockClient,

@@ -29,7 +29,7 @@ describe("voucher signature", () => {
   };
 
   const mockVoucherSignature =
-    "0x4f47e2cb1858b4d980c962bdb198c564acedec0e5d5e958431339b59130c416122faa4b8f2f34e1a5a2a3b6401cc938712abc6939ba8ab6106fb1efbb50a87e61b";
+    "0x899b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c";
 
   beforeEach(() => {
     vi.useFakeTimers();
