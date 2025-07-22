@@ -25,7 +25,7 @@ export async function signVoucher<transport extends Transport, chain extends Cha
     types: typedDataTypes,
     primaryType: deferredVoucherPrimaryType,
     domain: {
-      name: "VoucherEscrow",
+      name: "DeferredPaymentEscrow",
       version: "1",
       chainId,
       verifyingContract: getAddress(escrow),
@@ -76,7 +76,7 @@ export async function verifyVoucher(
     types: typedDataTypes,
     primaryType: deferredVoucherPrimaryType,
     domain: {
-      name: "VoucherEscrow",
+      name: "DeferredPaymentEscrow",
       version: "1",
       chainId: voucher.chainId,
       verifyingContract: getAddress(voucher.escrow),

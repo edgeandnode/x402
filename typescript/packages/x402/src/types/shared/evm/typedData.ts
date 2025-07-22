@@ -7,7 +7,7 @@ export const typedDataTypes = {
     { name: "validBefore", type: "uint256" },
     { name: "nonce", type: "bytes32" },
   ],
-  DeferredVoucher: [
+  Voucher: [
     { name: "id", type: "bytes32" },
     { name: "buyer", type: "address" },
     { name: "seller", type: "address" },
@@ -22,4 +22,4 @@ export const typedDataTypes = {
 };
 
 export const transferWithAuthorizationPrimaryType = "TransferWithAuthorization" as const;
-export const deferredVoucherPrimaryType = "DeferredVoucher" as const;
+export const deferredVoucherPrimaryType = "Voucher" as const;
