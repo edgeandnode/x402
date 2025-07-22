@@ -69,7 +69,7 @@ export async function verifyPaymentRequirements(
     if (
       BigInt(paymentPayload.payload.voucher.valueAggregate) <
       BigInt(paymentRequirements.maxAmountRequired) +
-        BigInt(paymentRequirements.extra.voucher.valueAggregate)
+      BigInt(paymentRequirements.extra.voucher.valueAggregate)
     ) {
       return {
         isValid: false,
@@ -202,13 +202,13 @@ export async function verifyOnchainState<
   }
 
   // Verify buyer has sufficient asset balance in the escrow contract
-  // We delegate the actual calculation to the escrow contract
-  let isVoucherCollectable: boolean;
+  // buyer has to cover the outstanding amount
+  let voucherOutstandingAmount: bigint;
   try {
-    isVoucherCollectable = await client.readContract({
+    [voucherOutstandingAmount] = await client.readContract({
       address: paymentPayload.payload.voucher.escrow as Address,
       abi: deferredEscrowABI,
-      functionName: "isVoucherCollectable",
+      functionName: "getOutstandingAndCollectableAmount",
       args: [
         {
           id: paymentPayload.payload.voucher.id as Hex,
@@ -227,11 +227,35 @@ export async function verifyOnchainState<
   } catch {
     return {
       isValid: false,
-      invalidReason: "insufficient_funds_contract_call_failed",
+      invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
-  if (!isVoucherCollectable) {
+  let buyerAccount: {
+    balance: bigint;
+    thawingAmount: bigint;
+    thawEndTime: bigint;
+  };
+  try {
+    buyerAccount = await client.readContract({
+      address: paymentPayload.payload.voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "getAccount",
+      args: [
+        paymentPayload.payload.voucher.buyer as Address,
+        paymentPayload.payload.voucher.seller as Address,
+        paymentPayload.payload.voucher.asset as Address,
+      ],
+    });
+  } catch (error) {
+    console.log(error);
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_contract_call_failed_account",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+  if (buyerAccount.balance < voucherOutstandingAmount) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",

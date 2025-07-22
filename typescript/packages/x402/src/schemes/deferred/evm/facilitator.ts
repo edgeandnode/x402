@@ -1,4 +1,4 @@
-import { Account, Address, Chain, encodeAbiParameters, parseAbiParameters, Transport } from "viem";
+import { Account, Address, Chain, Transport, Hex } from "viem";
 import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import {
   PaymentPayload,
@@ -94,15 +94,25 @@ export async function settle<transport extends Transport, chain extends Chain>(
 
   const { voucher, signature } = paymentPayload.payload;
 
-  const abiTypes = parseAbiParameters(
-    "(tuple(bytes32 id, address buyer, address seller, uint256 value, address asset, uint256 timestamp, uint256 nonce, address escrow, uint256 chainId) voucher, bytes signature)",
-  );
-  const encodedData = encodeAbiParameters(abiTypes, [[voucher, signature]]);
   const tx = await wallet.writeContract({
     address: voucher.escrow as Address,
     abi: deferredEscrowABI,
     functionName: "collect" as const,
-    args: [encodedData],
+    args: [
+      {
+        id: voucher.id as Hex,
+        buyer: voucher.buyer as Address,
+        seller: voucher.seller as Address,
+        valueAggregate: BigInt(voucher.valueAggregate),
+        asset: voucher.asset as Address,
+        timestamp: BigInt(voucher.timestamp),
+        nonce: BigInt(voucher.nonce),
+        escrow: voucher.escrow as Address,
+        chainId: BigInt(voucher.chainId),
+        expiry: BigInt(voucher.expiry),
+      },
+      signature as Hex,
+    ],
     chain: wallet.chain as Chain,
   });
 

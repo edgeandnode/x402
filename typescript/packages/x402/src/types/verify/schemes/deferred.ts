@@ -22,6 +22,8 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_no_longer_valid",
   "invalid_deferred_evm_payload_voucher_expired",
   "invalid_deferred_evm_payload_timestamp",
+  "invalid_deferred_evm_contract_call_failed_outstanding_amount",
+  "invalid_deferred_evm_contract_call_failed_account",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
