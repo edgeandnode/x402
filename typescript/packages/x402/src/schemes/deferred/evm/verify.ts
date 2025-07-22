@@ -69,7 +69,7 @@ export async function verifyPaymentRequirements(
     if (
       BigInt(paymentPayload.payload.voucher.valueAggregate) <
       BigInt(paymentRequirements.maxAmountRequired) +
-      BigInt(paymentRequirements.extra.voucher.valueAggregate)
+        BigInt(paymentRequirements.extra.voucher.valueAggregate)
     ) {
       return {
         isValid: false,
