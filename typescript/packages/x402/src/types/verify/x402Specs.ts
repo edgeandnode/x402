@@ -47,6 +47,7 @@ export const PaymentRequirementsSchema = z.discriminatedUnion("scheme", [
   DeferredPaymentRequirementsSchema,
 ]);
 export type PaymentRequirements = z.infer<typeof PaymentRequirementsSchema>;
+export type PaymentRequirementsExtra = z.infer<typeof PaymentRequirementsSchema>["extra"];
 
 // x402PaymentPayload
 export const PaymentPayloadSchema = z.discriminatedUnion("scheme", [
