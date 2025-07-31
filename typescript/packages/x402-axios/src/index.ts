@@ -1,4 +1,10 @@
-import { AxiosInstance, AxiosError } from "axios";
+import { AxiosError, AxiosInstance } from "axios";
+import { Client, LocalAccount } from "viem";
+import {
+  createPaymentHeader,
+  PaymentRequirementsSelector,
+  selectPaymentRequirements,
+} from "x402/client";
 import {
   Signer,
   MultiNetworkSigner,
@@ -134,6 +140,25 @@ export function withDeferredPaymentInterceptor(
   walletClient: Wallet,
   paymentRequirementsSelector: PaymentRequirementsSelector = selectPaymentRequirements,
 ) {
+  // intercept the request to send a `X-PAYMENT-BUYER` header with each request
+  axiosClient.interceptors.request.use(
+    async request => {
+      const buyer =
+        (walletClient as LocalAccount).address || (walletClient as Client).account?.address;
+      if (buyer) {
+        request.headers.set("X-PAYMENT-BUYER", buyer);
+      }
+
+      return request;
+    },
+    async (error: AxiosError) => error,
+    {
+      synchronous: true,
+      runWhen() {
+        return true;
+      },
+    },
+  );
   axiosClient.interceptors.response.use(
     response => response,
     async (error: AxiosError) => {
