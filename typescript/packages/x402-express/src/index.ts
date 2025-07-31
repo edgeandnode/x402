@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { Address, getAddress } from "viem";
 import { Address as SolanaAddress } from "@solana/kit";
-import { exact } from "x402/schemes";
+import { exact, deferred } from "x402/schemes";
 import {
   computeRoutePatterns,
   findMatchingPaymentRequirements,
@@ -15,18 +15,20 @@ import {
   ERC20TokenAmount,
   moneySchema,
   PaymentPayload,
-  PaymentRequirements,
   PaywallConfig,
   Resource,
   RoutesConfig,
   settleResponseHeader,
   SupportedEVMNetworks,
   SupportedSVMNetworks,
+  PaymentRequirementsSchema,
+  PaymentRequirements,
+  DEFERRRED_SCHEME,
 } from "x402/types";
 import { useFacilitator } from "x402/verify";
 
 /**
- * Creates a payment middleware factory for Express
+ * Creates an exact payment middleware factory for Express
  *
  * @param payTo - The address to receive payments
  * @param routes - Configuration for protected routes and their payment requirements
@@ -342,6 +344,174 @@ export function paymentMiddleware(
         originalEnd(...(endArgs as Parameters<typeof res.end>));
       }
     }
+  };
+}
+
+/**
+ * Creates a deferred payment middleware factory for Express
+ *
+ * @param payTo - The address to receive payments
+ * @param routes - Configuration for protected routes and their payment requirements
+ * @param facilitator - Optional configuration for the payment facilitator service
+ * @returns An Express middleware handler
+ *
+ * @example
+ * ```typescript
+ * // Simple configuration - All endpoints are protected by $0.01 of USDC on base-sepolia
+ * app.use(deferredPaymentMiddleware(
+ *   '0x123...', // payTo address
+ *   {
+ *     price: '$0.01', // USDC amount in dollars
+ *     network: 'base-sepolia'
+ *   },
+ *   // Optional facilitator configuration. Defaults to x402.org/facilitator for testnet usage
+ * ));
+ *
+ * // Advanced configuration - Endpoint-specific payment requirements & custom facilitator
+ * app.use(deferredPaymentMiddleware('0x123...', // payTo: The address to receive payments*    {
+ *   {
+ *     '/weather/*': {
+ *       price: '$0.001', // USDC amount in dollars
+ *       network: 'base',
+ *       config: {
+ *         description: 'Access to weather data'
+ *       }
+ *     }
+ *   },
+ *   {
+ *     url: 'https://facilitator.example.com',
+ *     createAuthHeaders: async () => ({
+ *       verify: { "Authorization": "Bearer token" },
+ *       settle: { "Authorization": "Bearer token" }
+ *     })
+ *   },
+ *   {
+ *     cdpClientKey: 'your-cdp-client-key',
+ *     appLogo: '/images/logo.svg',
+ *     appName: 'My App',
+ *   }
+ * ));
+ * ```
+ */
+export function deferredPaymentMiddleware(
+  payTo: Address,
+  routes: RoutesConfig,
+  facilitator?: FacilitatorConfig,
+) {
+  const { verify } = useFacilitator(facilitator);
+  const x402Version = 1;
+
+  // Pre-compile route patterns to regex and extract verbs
+  const routePatterns = computeRoutePatterns(routes);
+
+  return async function paymentMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    const matchingRoute = findMatchingRoute(routePatterns, req.path, req.method.toUpperCase());
+
+    if (!matchingRoute) {
+      return next();
+    }
+
+    const { price, network, config = {} } = matchingRoute.config;
+    const { description, mimeType, maxTimeoutSeconds, outputSchema, resource } = config;
+
+    const atomicAmountForAsset = processPriceToAtomicAmount(price, network);
+    if ("error" in atomicAmountForAsset) {
+      throw new Error(atomicAmountForAsset.error);
+    }
+    const { maxAmountRequired, asset } = atomicAmountForAsset;
+
+    const resourceUrl: Resource =
+      resource || (`${req.protocol}://${req.headers.host}${req.path}` as Resource);
+
+    const payment = req.header("X-PAYMENT");
+    const paymentBuyer = req.header("X-PAYMENT-BUYER");
+
+    const extra = await config.extraGetter?.(payment, paymentBuyer);
+    const unparsedPaymentRequirements = [
+      {
+        scheme: DEFERRRED_SCHEME,
+        network,
+        maxAmountRequired,
+        resource: resourceUrl,
+        description: description ?? "",
+        mimeType: mimeType ?? "",
+        payTo: getAddress(payTo),
+        maxTimeoutSeconds: maxTimeoutSeconds ?? 60,
+        asset: getAddress(asset.address),
+        outputSchema: outputSchema ?? undefined,
+        extra,
+      },
+    ];
+
+    const paymentRequirements = unparsedPaymentRequirements.map(req => {
+      const parsed = PaymentRequirementsSchema.safeParse(req);
+      if (!parsed.success) {
+        throw new Error(`Invalid payment requirements: ${parsed.error.message}`);
+      }
+      return parsed.data;
+    });
+
+    if (!payment) {
+      res.status(402).json({
+        x402Version,
+        error: "X-PAYMENT header is required",
+        accepts: toJsonSafe(paymentRequirements),
+      });
+      return;
+    }
+
+    let decodedPayment: PaymentPayload;
+    try {
+      decodedPayment = deferred.evm.decodePayment(payment);
+      decodedPayment.x402Version = x402Version;
+    } catch (error) {
+      res.status(402).json({
+        x402Version,
+        error: error || "Invalid or malformed payment header",
+        accepts: toJsonSafe(paymentRequirements),
+      });
+      return;
+    }
+
+    const selectedPaymentRequirements = findMatchingPaymentRequirements(
+      paymentRequirements,
+      decodedPayment,
+    );
+    if (!selectedPaymentRequirements) {
+      res.status(402).json({
+        x402Version,
+        error: "Unable to find matching payment requirements",
+        accepts: toJsonSafe(paymentRequirements),
+      });
+      return;
+    }
+
+    try {
+      const response = await verify(decodedPayment, selectedPaymentRequirements);
+      if (!response.isValid) {
+        res.status(402).json({
+          x402Version,
+          error: response.invalidReason,
+          accepts: toJsonSafe(paymentRequirements),
+          payer: response.payer,
+        });
+        return;
+      }
+    } catch (error) {
+      res.status(402).json({
+        x402Version,
+        error,
+        accepts: toJsonSafe(paymentRequirements),
+      });
+      return;
+    }
+
+    // Proceed to the next middleware or route handler
+    next();
   };
 }
 
