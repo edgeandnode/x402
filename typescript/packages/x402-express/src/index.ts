@@ -24,6 +24,10 @@ import {
   PaymentRequirementsSchema,
   PaymentRequirements,
   DEFERRRED_SCHEME,
+  DeferredEvmPayloadSchema,
+  EXACT_SCHEME,
+  DeferredEvmPayloadVoucher,
+  PaymentRequirementsExtra,
 } from "x402/types";
 import { useFacilitator } from "x402/verify";
 
@@ -124,7 +128,7 @@ export function paymentMiddleware(
     // evm networks
     if (SupportedEVMNetworks.includes(network)) {
       paymentRequirements.push({
-        scheme: "exact",
+        scheme: EXACT_SCHEME,
         network,
         maxAmountRequired,
         resource: resourceUrl,
@@ -302,7 +306,7 @@ export function paymentMiddleware(
     };
 
     // Proceed to the next middleware or route handler
-    await next();
+    next();
 
     // If the response from the protected route is >= 400, do not settle payment
     if (res.statusCode >= 400) {
@@ -352,6 +356,8 @@ export function paymentMiddleware(
  *
  * @param payTo - The address to receive payments
  * @param routes - Configuration for protected routes and their payment requirements
+ * @param getLatestVoucher - A function to get the latest voucher for a given buyer and seller. Needs to be implemented by the server.
+ * @param escrow - The escrow address
  * @param facilitator - Optional configuration for the payment facilitator service
  * @returns An Express middleware handler
  *
@@ -396,6 +402,11 @@ export function paymentMiddleware(
 export function deferredPaymentMiddleware(
   payTo: Address,
   routes: RoutesConfig,
+  getLatestVoucher: (
+    buyer: string,
+    seller: string,
+  ) => Promise<(DeferredEvmPayloadVoucher & { signature: string }) | null>,
+  escrow: Address,
   facilitator?: FacilitatorConfig,
 ) {
   const { verify } = useFacilitator(facilitator);
@@ -430,7 +441,6 @@ export function deferredPaymentMiddleware(
     const payment = req.header("X-PAYMENT");
     const paymentBuyer = req.header("X-PAYMENT-BUYER");
 
-    const extra = await config.extraGetter?.(payment, paymentBuyer);
     const unparsedPaymentRequirements = [
       {
         scheme: DEFERRRED_SCHEME,
@@ -443,7 +453,13 @@ export function deferredPaymentMiddleware(
         maxTimeoutSeconds: maxTimeoutSeconds ?? 60,
         asset: getAddress(asset.address),
         outputSchema: outputSchema ?? undefined,
-        extra,
+        extra: await getPaymentRequirementsExtra(
+          payment,
+          paymentBuyer,
+          payTo,
+          escrow,
+          getLatestVoucher,
+        ),
       },
     ];
 
@@ -502,6 +518,7 @@ export function deferredPaymentMiddleware(
         return;
       }
     } catch (error) {
+      console.log(error);
       res.status(402).json({
         x402Version,
         error,
@@ -512,6 +529,91 @@ export function deferredPaymentMiddleware(
 
     // Proceed to the next middleware or route handler
     next();
+  };
+}
+
+/**
+ * Generate a new voucher id
+ *
+ * @returns A new voucher id
+ */
+function generateVoucherId() {
+  return `0x${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.padEnd(66, "0");
+}
+
+/**
+ * Get the extra data for the payment requirements
+ *
+ * @param paymentHeader - The x-payment header
+ * @param paymentBuyerHeader - The x-payment-buyer header
+ * @param seller - The seller address
+ * @param escrow - The escrow address
+ * @param getLatestVoucher - A function to get the latest voucher for a given buyer and seller.
+ * @returns The extra data for the payment requirements
+ */
+async function getPaymentRequirementsExtra(
+  paymentHeader: string | undefined,
+  paymentBuyerHeader: string | undefined,
+  seller: Address,
+  escrow: Address,
+  getLatestVoucher: (
+    buyer: string,
+    seller: string,
+  ) => Promise<(DeferredEvmPayloadVoucher & { signature: string }) | null>,
+): Promise<PaymentRequirementsExtra> {
+  const newVoucher = {
+    type: "new" as const,
+    voucher: {
+      id: generateVoucherId(),
+      escrow,
+    },
+  };
+
+  // No header, new voucher
+  if (!paymentHeader) {
+    if (paymentBuyerHeader) {
+      const latestVoucher = await getLatestVoucher(paymentBuyerHeader, seller);
+
+      // No voucher history, new voucher
+      if (!latestVoucher) {
+        return newVoucher;
+      }
+
+      // If we made it here, means we need to aggregate the last voucher
+      return {
+        type: "aggregation" as const,
+        signature: latestVoucher.signature,
+        voucher: {
+          ...latestVoucher,
+        },
+      };
+    }
+    return newVoucher;
+  }
+
+  // Wrong payload, new voucher
+  const paymentRequirements = DeferredEvmPayloadSchema.safeParse(
+    deferred.evm.decodePayment(paymentHeader).payload,
+  );
+  if (!paymentRequirements.success) {
+    return newVoucher;
+  }
+
+  // Get the latest voucher for the buyer
+  const latestVoucher = await getLatestVoucher(paymentRequirements.data.voucher.buyer, seller);
+
+  // No voucher history, new voucher
+  if (!latestVoucher) {
+    return newVoucher;
+  }
+
+  // If we made it here, means we need to aggregate the last voucher
+  return {
+    type: "aggregation" as const,
+    signature: latestVoucher.signature,
+    voucher: {
+      ...latestVoucher,
+    },
   };
 }
 
