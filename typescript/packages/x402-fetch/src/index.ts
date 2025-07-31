@@ -1,3 +1,4 @@
+import { Client, LocalAccount } from "viem";
 import {
   createPaymentHeader,
   PaymentRequirementsSelector,
@@ -165,6 +166,19 @@ export function wrapFetchWithDeferredPayment(
   paymentRequirementsSelector: PaymentRequirementsSelector = selectPaymentRequirements,
 ) {
   return async (input: RequestInfo, init?: RequestInit) => {
+    // Add header to the initial request to identify the buyer
+    const buyer =
+      (walletClient as LocalAccount).address || (walletClient as Client).account?.address;
+    if (buyer) {
+      init = {
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+          "X-PAYMENT-BUYER": buyer,
+        },
+      };
+    }
+
     const response = await fetch(input, init);
 
     if (response.status !== 402) {
