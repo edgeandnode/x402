@@ -352,61 +352,85 @@ export function paymentMiddleware(
 }
 
 /**
- * Creates a deferred payment middleware factory for Express
+ * Creates a deferred payment middleware factory for Express.
+ *
+ * Note: this middleware only performs x402 verification. In the deferred scheme,
+ * settlement does not happen as part of the x402 resource request handshake.
+ *
+ * The middleware requires two server-implemented functions, executed before and after
+ * x402 verification:
+ * - retrieveVoucher: Before verification, retrieves the latest voucher for a given
+ *   buyer/seller. Used to determine whether to create a new voucher or aggregate
+ *   into the existing one.
+ * - storeVoucher: After verification, allows the server to persist the newly created
+ *   voucher. This can be stored locally or via a third-party service.
  *
  * @param payTo - The address to receive payments
  * @param routes - Configuration for protected routes and their payment requirements
- * @param getLatestVoucher - A function to get the latest voucher for a given buyer and seller. Needs to be implemented by the server.
+ * @param retrieveVoucher - A function to get the latest voucher for a given buyer and seller. Needs to be implemented by the server.
  * @param escrow - The escrow address
+ * @param storeVoucher - A function to store the voucher. Needs to be implemented by the server.
  * @param facilitator - Optional configuration for the payment facilitator service
  * @returns An Express middleware handler
  *
  * @example
  * ```typescript
- * // Simple configuration - All endpoints are protected by $0.01 of USDC on base-sepolia
- * app.use(deferredPaymentMiddleware(
- *   '0x123...', // payTo address
- *   {
- *     price: '$0.01', // USDC amount in dollars
- *     network: 'base-sepolia'
- *   },
- *   // Optional facilitator configuration. Defaults to x402.org/facilitator for testnet usage
- * ));
+ * // Simple configuration — all endpoints protected by $0.01 of USDC on Base Sepolia
+ * app.use(
+ *   deferredPaymentMiddleware(
+ *     '0x123...', // payTo address
+ *     {
+ *       price: '$0.01', // USDC amount in dollars
+ *       network: 'base-sepolia',
+ *     },
+ *     retrieveVoucher,
+ *     '0xescrowAddress...',
+ *     storeVoucher,
+ *     // Optional facilitator configuration (defaults to x402.org/facilitator for testnet usage)
+ *   )
+ * );
  *
- * // Advanced configuration - Endpoint-specific payment requirements & custom facilitator
- * app.use(deferredPaymentMiddleware('0x123...', // payTo: The address to receive payments*    {
- *   {
- *     '/weather/*': {
- *       price: '$0.001', // USDC amount in dollars
- *       network: 'base',
- *       config: {
- *         description: 'Access to weather data'
- *       }
+ * // Advanced configuration — endpoint-specific requirements & custom facilitator
+ * app.use(
+ *   deferredPaymentMiddleware(
+ *     '0x123...', // payTo
+ *     {
+ *       '/weather/*': {
+ *         price: '$0.001', // USDC amount in dollars
+ *         network: 'base',
+ *         config: {
+ *           description: 'Access to weather data',
+ *         },
+ *       },
+ *     },
+ *     retrieveVoucher,
+ *     '0xescrowAddress...',
+ *     storeVoucher,
+ *     {
+ *       url: 'https://facilitator.example.com',
+ *       createAuthHeaders: async () => ({
+ *         verify: { Authorization: 'Bearer token' },
+ *         settle: { Authorization: 'Bearer token' },
+ *       }),
+ *     },
+ *     {
+ *       cdpClientKey: 'your-cdp-client-key',
+ *       appLogo: '/images/logo.svg',
+ *       appName: 'My App',
  *     }
- *   },
- *   {
- *     url: 'https://facilitator.example.com',
- *     createAuthHeaders: async () => ({
- *       verify: { "Authorization": "Bearer token" },
- *       settle: { "Authorization": "Bearer token" }
- *     })
- *   },
- *   {
- *     cdpClientKey: 'your-cdp-client-key',
- *     appLogo: '/images/logo.svg',
- *     appName: 'My App',
- *   }
- * ));
+ *   )
+ * );
  * ```
  */
 export function deferredPaymentMiddleware(
   payTo: Address,
   routes: RoutesConfig,
-  getLatestVoucher: (
+  retrieveVoucher: (
     buyer: string,
     seller: string,
   ) => Promise<(DeferredEvmPayloadVoucher & { signature: string }) | null>,
   escrow: Address,
+  storeVoucher: (voucher: DeferredEvmPayloadVoucher, signature: string) => Promise<void>,
   facilitator?: FacilitatorConfig,
 ) {
   const { verify } = useFacilitator(facilitator);
@@ -458,7 +482,7 @@ export function deferredPaymentMiddleware(
           paymentBuyer,
           payTo,
           escrow,
-          getLatestVoucher,
+          retrieveVoucher,
         ),
       },
     ];
@@ -527,18 +551,22 @@ export function deferredPaymentMiddleware(
       return;
     }
 
+    try {
+      const { voucher, signature } = DeferredEvmPayloadSchema.parse(decodedPayment.payload);
+      await storeVoucher(voucher, signature);
+    } catch (error) {
+      console.error(error);
+      res.status(402).json({
+        x402Version,
+        error,
+        accepts: toJsonSafe(paymentRequirements),
+      });
+      return;
+    }
+
     // Proceed to the next middleware or route handler
     next();
   };
-}
-
-/**
- * Generate a new voucher id
- *
- * @returns A new voucher id
- */
-function generateVoucherId() {
-  return `0x${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.padEnd(66, "0");
 }
 
 /**
@@ -548,7 +576,7 @@ function generateVoucherId() {
  * @param paymentBuyerHeader - The x-payment-buyer header
  * @param seller - The seller address
  * @param escrow - The escrow address
- * @param getLatestVoucher - A function to get the latest voucher for a given buyer and seller.
+ * @param retrieveVoucher - A function to get the latest voucher for a given buyer and seller.
  * @returns The extra data for the payment requirements
  */
 async function getPaymentRequirementsExtra(
@@ -556,7 +584,7 @@ async function getPaymentRequirementsExtra(
   paymentBuyerHeader: string | undefined,
   seller: Address,
   escrow: Address,
-  getLatestVoucher: (
+  retrieveVoucher: (
     buyer: string,
     seller: string,
   ) => Promise<(DeferredEvmPayloadVoucher & { signature: string }) | null>,
@@ -564,7 +592,7 @@ async function getPaymentRequirementsExtra(
   const newVoucher = {
     type: "new" as const,
     voucher: {
-      id: generateVoucherId(),
+      id: deferred.evm.generateVoucherId(),
       escrow,
     },
   };
@@ -572,7 +600,7 @@ async function getPaymentRequirementsExtra(
   // No header, new voucher
   if (!paymentHeader) {
     if (paymentBuyerHeader) {
-      const latestVoucher = await getLatestVoucher(paymentBuyerHeader, seller);
+      const latestVoucher = await retrieveVoucher(paymentBuyerHeader, seller);
 
       // No voucher history, new voucher
       if (!latestVoucher) {
@@ -600,7 +628,7 @@ async function getPaymentRequirementsExtra(
   }
 
   // Get the latest voucher for the buyer
-  const latestVoucher = await getLatestVoucher(paymentRequirements.data.voucher.buyer, seller);
+  const latestVoucher = await retrieveVoucher(paymentRequirements.data.voucher.buyer, seller);
 
   // No voucher history, new voucher
   if (!latestVoucher) {
