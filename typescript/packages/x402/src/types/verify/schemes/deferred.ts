@@ -41,6 +41,12 @@ export const DeferredEvmPayloadVoucherSchema = z.object({
 });
 export type DeferredEvmPayloadVoucher = z.infer<typeof DeferredEvmPayloadVoucherSchema>;
 
+// x402DeferredEvmPayloadSignedVoucher
+export const DeferredEvmPayloadSignedVoucherSchema = DeferredEvmPayloadVoucherSchema.extend({
+  signature: z.string().regex(EvmSignatureRegex),
+});
+export type DeferredEvmPayloadSignedVoucher = z.infer<typeof DeferredEvmPayloadSignedVoucherSchema>;
+
 // x402DeferredEvmPayload
 export const DeferredEvmPayloadSchema = z.object({
   signature: z.string().regex(EvmSignatureRegex),
