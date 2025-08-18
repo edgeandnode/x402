@@ -120,22 +120,52 @@ Example:
 
 ## Verification
 
-Steps to verify a payment for the `deferred` scheme:
+### Facilitator Verification
 
-1. Verify the signature is valid
-2. Verify the `paymentPayload` matches the requirements set by `paymentRequirements`
+The facilitator performs comprehensive verification when receiving a deferred payment:
+
+1. **Signature validation**: Verify the EIP-712 signature is valid
+2. **Payment requirements matching**:
     - Verify scheme is `"deferred"`
     - Verify `paymentPayload.network` matches `paymentRequirements.network`
-    - Verify `paymentPayload.voucher.valueAggregate` is enough to cover `paymentRequirements.maxAmountRequired` plus previous voucher value aggregate if it's an aggregate voucher
     - Verify `paymentRequirements.payTo` matches `paymentPayload.voucher.seller`
     - Verify `paymentPayload.voucher.asset` matches `paymentRequirements.asset`
-    - Validates the `paymentPayload.voucher.chainId` matches the chain specified by `paymentRequirements.network`
-    - Validates the `paymentPayload.voucher.expiry` and `paymentPayload.voucher.timestamp` dates make sense
-3. Verify the `buyer` has enough of the `asset` (ERC20 token) in the escrow to cover the valueAggregate in the `payload.voucher`
-4. Verify the valueAggregate in the `payload.voucher`, minus any payments already made for its `id`, is enough to cover `paymentRequirements.maxAmountRequired`
-5. Verify the voucher has not expired by checking that the current timestamp is less than or equal to `expiry`
-6. Verify `chainId` matches the chain id for the `paymentPayload.network`
-7. (Optional, but recommended) Simulate the voucher collection to ensure the transaction would succeed
+    - Verify `paymentPayload.voucher.chainId` matches the chain specified by `paymentRequirements.network`
+3. **Voucher aggregation validation** (if aggregating an existing voucher):
+    - Verify `nonce` equals the previous `nonce + 1`
+    - Verify `valueAggregate` is equal to the previous `valueAggregate + paymentRequirements.maxAmountRequired`
+    - Verify `timestamp` is greater than the previous `timestamp`
+    - Verify `buyer`, `seller`, `asset`, `escrow` and `chainId` all match the previous voucher values
+4. **Amount validation**:
+    - Verify `paymentPayload.voucher.valueAggregate` is enough to cover `paymentRequirements.maxAmountRequired` plus previous voucher value aggregate if it's an aggregate voucher
+5. **Escrow balance check**:
+    - Verify the `buyer` has enough of the `asset` (ERC20 token) in the escrow to cover the valueAggregate in the `payload.voucher`
+    - Verify `id` has not been already collected in the escrow, or if it has, that the new balance is greater than what was already paid (in which case the difference will be paid)
+6. **Expiry validation**:
+    - Verify the voucher has not expired by checking that the current timestamp is less than or equal to `expiry`
+    - Verify `paymentPayload.voucher.expiry` and `paymentPayload.voucher.timestamp` dates make sense
+7. **Transaction simulation** (optional but recommended):
+    - Simulate the voucher collection to ensure the transaction would succeed on-chain
+
+### Smart Contract Verification
+
+When vouchers are collected on-chain, the escrow smart contract verifies:
+
+1. Signature validity for the EIP-712 typed data
+2. `chainId` matches the network chain id
+3. `buyer` balance of `asset` is sufficient to cover `valueAggregate` in voucher
+4. The `id` has not been used, or if it has, that the new balance is greater than what was already paid (paying only the difference)
+
+### Seller Verification
+
+Sellers trust the facilitator's verification and do not perform additional checks when receiving vouchers.
+
+### Buyer Verification
+
+When aggregating a voucher, buyers should:
+
+1. Verify the signature is valid
+2. Verify the `seller`, `asset` and `chainId` in the previous voucher match the payment requirements
 
 ## Settlement
 
