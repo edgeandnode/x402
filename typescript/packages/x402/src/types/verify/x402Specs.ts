@@ -13,6 +13,7 @@ import {
   DeferredErrorReasons,
   DeferredPaymentPayloadSchema,
   DeferredPaymentRequirementsSchema,
+  DeferredSchemeContextSchema,
   UnsignedDeferredPaymentPayloadSchema,
 } from "./schemes/deferred";
 import { x402Versions } from "./versions";
@@ -37,6 +38,7 @@ export const ErrorReasons = [
   "unsupported_scheme",
   "unexpected_settle_error",
   "unexpected_verify_error",
+  "missing_scheme_context",
   ...ExactErrorReasons,
   ...DeferredErrorReasons,
 ] as const;
@@ -188,3 +190,9 @@ export const SupportedPaymentKindsResponseSchema = z.object({
   kinds: z.array(SupportedPaymentKindSchema),
 });
 export type SupportedPaymentKindsResponse = z.infer<typeof SupportedPaymentKindsResponseSchema>;
+
+// x402SchemeContext
+export const SchemeContextSchema = z.object({
+  deferred: DeferredSchemeContextSchema.optional(),
+});
+export type SchemeContext = z.infer<typeof SchemeContextSchema>;

@@ -1,5 +1,10 @@
 import { Account, Chain, Address, Hex, Transport, getAddress } from "viem";
-import { DeferredPaymentPayload, DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
+import {
+  DeferredEvmPayloadSignedVoucher,
+  DeferredPaymentPayload,
+  DeferredPaymentRequirements,
+  DEFERRRED_SCHEME,
+} from "../../../types/verify/schemes/deferred";
 import { PaymentRequirements, VerifyResponse } from "../../../types";
 import { getNetworkId } from "../../../shared";
 import { verifyVoucher } from "./sign";
@@ -7,25 +12,17 @@ import { ConnectedClient } from "../../../types/shared/evm/wallet";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 
 /**
- * Verifies the payment payload match the payment requirements
- *
- * - ✅ Verify scheme is deferred
- * - ✅ Verify network matches payment requirements
- * - ✅ Verify voucher value is enough to cover maxAmountRequired
- * - ✅ Verify payTo is voucher seller
- * - ✅ Verify voucher asset matches payment requirements
- * - ✅ Validates the voucher chainId matches the chain specified in the payment requirements
- * - ✅ Validates the voucher expiration and timestamp dates make sense
+ * Verifies the payment payload satisfies the payment requirements.
  *
  * @param paymentPayload - The payment payload to verify
  * @param paymentRequirements - The payment requirements to verify
- * @returns The payment requirements if valid, otherwise an error object
+ * @returns Verification result
  */
-export async function verifyPaymentRequirements(
+export function verifyPaymentRequirements(
   paymentPayload: DeferredPaymentPayload,
-  paymentRequirements: PaymentRequirements,
-): Promise<VerifyResponse | undefined> {
-  // Verify payload matches requirements: scheme
+  paymentRequirements: DeferredPaymentRequirements,
+): VerifyResponse {
+  // scheme
   if (paymentPayload.scheme !== DEFERRRED_SCHEME) {
     return {
       isValid: false,
@@ -39,7 +36,7 @@ export async function verifyPaymentRequirements(
     };
   }
 
-  // Verify payload matches requirements: network
+  // network
   if (paymentPayload.network !== paymentRequirements.network) {
     return {
       isValid: false,
@@ -47,57 +44,6 @@ export async function verifyPaymentRequirements(
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
-
-  // Verify payload matches requirements: maxAmountRequired -- new vouchers
-  // value in voucher should be enough to cover paymentRequirements.maxAmountRequired
-  if (paymentRequirements.extra.type === "new") {
-    if (
-      BigInt(paymentPayload.payload.voucher.valueAggregate) <
-      BigInt(paymentRequirements.maxAmountRequired)
-    ) {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_payload_voucher_value",
-        payer: paymentPayload.payload.voucher.buyer,
-      };
-    }
-  }
-
-  // Verify payload matches requirements: maxAmountRequired -- aggregate vouchers
-  // value in voucher should be enough to cover paymentRequirements.maxAmountRequired plus previous voucher value
-  if (paymentRequirements.extra.type === "aggregation") {
-    if (
-      BigInt(paymentPayload.payload.voucher.valueAggregate) <
-      BigInt(paymentRequirements.maxAmountRequired) +
-        BigInt(paymentRequirements.extra.voucher.valueAggregate)
-    ) {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_payload_voucher_value",
-        payer: paymentPayload.payload.voucher.buyer,
-      };
-    }
-  }
-
-  // Verify payload matches requirements: payTo
-  if (getAddress(paymentPayload.payload.voucher.seller) !== getAddress(paymentRequirements.payTo)) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_recipient_mismatch",
-      payer: paymentPayload.payload.voucher.buyer,
-    };
-  }
-
-  // Verify payload matches requirements: asset
-  if (paymentPayload.payload.voucher.asset !== paymentRequirements.asset) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_asset_mismatch",
-      payer: paymentPayload.payload.voucher.buyer,
-    };
-  }
-
-  //Validates the voucher chainId matches the chain specified in the payment requirements
   let chainId: number;
   try {
     chainId = getNetworkId(paymentRequirements.network);
@@ -116,22 +62,181 @@ export async function verifyPaymentRequirements(
     };
   }
 
-  // Verify payload matches requirements: voucher expiration and timestamp
+  // maxAmountRequired
+  const requiredVoucherValueAggregate =
+    paymentRequirements.extra.type === "new"
+      ? BigInt(paymentRequirements.maxAmountRequired)
+      : BigInt(paymentRequirements.maxAmountRequired) +
+        BigInt(paymentRequirements.extra.voucher.valueAggregate);
+  if (BigInt(paymentPayload.payload.voucher.valueAggregate) < requiredVoucherValueAggregate) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_value",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+
+  // payTo
+  if (getAddress(paymentPayload.payload.voucher.seller) !== getAddress(paymentRequirements.payTo)) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_recipient_mismatch",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+
+  // asset
+  if (paymentPayload.payload.voucher.asset !== paymentRequirements.asset) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_asset_mismatch",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies the voucher structrure is valid and continuity is maintained
+ *
+ * @param paymentPayload - The payment payload to verify
+ * @param paymentRequirements - The payment requirements to verify
+ * @returns Verification result
+ */
+export function verifyVoucherContinuity(
+  paymentPayload: DeferredPaymentPayload,
+  paymentRequirements: DeferredPaymentRequirements,
+): VerifyResponse {
+  const voucher = paymentPayload.payload.voucher;
+
+  // expiration
   const now = Math.floor(Date.now() / 1000);
-  if (paymentPayload.payload.voucher.expiry < now) {
+  if (voucher.expiry < now) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_expired",
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
-  if (paymentPayload.payload.voucher.timestamp > now) {
+
+  // timestamp
+  if (voucher.timestamp > now) {
     return {
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_timestamp",
+      invalidReason: "invalid_deferred_evm_payload_timestamp_too_early",
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
+
+  // -- New voucher --
+  if (paymentRequirements.extra.type === "new") {
+    if (voucher.nonce != 0) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_non_zero_nonce",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    if (BigInt(voucher.valueAggregate) == 0n) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_zero_value_aggregate",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+  }
+
+  // -- Aggregation voucher --
+  if (paymentRequirements.extra.type === "aggregation") {
+    const previousVoucher = paymentRequirements.extra.voucher;
+    // id
+    if (voucher.id !== previousVoucher.id) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_id_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // buyer
+    if (voucher.buyer !== previousVoucher.buyer) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_buyer_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // seller
+    if (voucher.seller !== previousVoucher.seller) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_seller_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // valueAggregate
+    if (voucher.valueAggregate < previousVoucher.valueAggregate) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_value_aggregate_decreasing",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // asset
+    if (voucher.asset !== previousVoucher.asset) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_asset_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // timestamp
+    if (voucher.timestamp < previousVoucher.timestamp) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_timestamp_decreasing",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // nonce
+    if (voucher.nonce !== previousVoucher.nonce + 1) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_nonce_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // escrow
+    if (voucher.escrow !== previousVoucher.escrow) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_escrow_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // chainId
+    if (voucher.chainId !== previousVoucher.chainId) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_chain_id_mismatch",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    // expiry
+    if (voucher.expiry < previousVoucher.expiry) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_expiry_decreasing",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+  }
+
+  return {
+    isValid: true,
+  };
 }
 
 /**
@@ -141,11 +246,11 @@ export async function verifyPaymentRequirements(
  * - ✅ Verify the voucher signer is the buyer
  *
  * @param paymentPayload - The payment payload to verify
- * @returns The payment requirements if valid, otherwise an error object
+ * @returns Verification result
  */
 export async function verifyVoucherSignature(
   paymentPayload: DeferredPaymentPayload,
-): Promise<VerifyResponse | undefined> {
+): Promise<VerifyResponse> {
   const voucherSignatureIsValid = await verifyVoucher(
     paymentPayload.payload.voucher,
     paymentPayload.payload.signature as Hex,
@@ -158,6 +263,46 @@ export async function verifyVoucherSignature(
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies two vouchers are the same
+ *
+ * @param newVoucher - The new voucher to verify
+ * @param previousVoucher - The previous voucher to verify against
+ * @returns Verification result
+ */
+export function verifyVoucherDuplicate(
+  newVoucher: DeferredEvmPayloadSignedVoucher,
+  previousVoucher: DeferredEvmPayloadSignedVoucher,
+): VerifyResponse {
+  if (
+    newVoucher.id === previousVoucher.id &&
+    newVoucher.buyer === previousVoucher.buyer &&
+    newVoucher.seller === previousVoucher.seller &&
+    newVoucher.valueAggregate === previousVoucher.valueAggregate &&
+    newVoucher.asset === previousVoucher.asset &&
+    newVoucher.timestamp === previousVoucher.timestamp &&
+    newVoucher.nonce === previousVoucher.nonce &&
+    newVoucher.escrow === previousVoucher.escrow &&
+    newVoucher.chainId === previousVoucher.chainId &&
+    newVoucher.expiry === previousVoucher.expiry &&
+    newVoucher.signature === previousVoucher.signature
+  ) {
+    return {
+      isValid: true,
+    };
+  }
+
+  return {
+    isValid: false,
+    invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+    payer: newVoucher.buyer,
+  };
 }
 
 /**
@@ -170,7 +315,7 @@ export async function verifyVoucherSignature(
  * @param client - The client to use for the onchain state verification
  * @param paymentPayload - The payment payload to verify
  * @param paymentRequirements - The payment requirements to verify
- * @returns The payment requirements if valid, otherwise an error object
+ * @returns Verification result
  */
 export async function verifyOnchainState<
   transport extends Transport,
@@ -180,7 +325,7 @@ export async function verifyOnchainState<
   client: ConnectedClient<transport, chain, account>,
   paymentPayload: DeferredPaymentPayload,
   paymentRequirements: PaymentRequirements,
-): Promise<VerifyResponse | undefined> {
+): Promise<VerifyResponse> {
   let chainId: number;
   try {
     chainId = getNetworkId(paymentRequirements.network);
@@ -262,4 +407,8 @@ export async function verifyOnchainState<
       payer: paymentPayload.payload.voucher.buyer,
     };
   }
+
+  return {
+    isValid: true,
+  };
 }

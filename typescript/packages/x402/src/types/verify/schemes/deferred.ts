@@ -7,6 +7,7 @@ import {
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
+import { VoucherStore } from "../../../schemes/deferred/evm/store";
 
 export const DEFERRRED_SCHEME = "deferred";
 
@@ -21,9 +22,24 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_signature",
   "invalid_deferred_evm_payload_no_longer_valid",
   "invalid_deferred_evm_payload_voucher_expired",
-  "invalid_deferred_evm_payload_timestamp",
+  "invalid_deferred_evm_payload_timestamp_too_early",
   "invalid_deferred_evm_contract_call_failed_outstanding_amount",
   "invalid_deferred_evm_contract_call_failed_account",
+  "invalid_deferred_evm_payload_voucher_non_zero_nonce",
+  "invalid_deferred_evm_payload_voucher_id_mismatch",
+  "invalid_deferred_evm_payload_voucher_buyer_mismatch",
+  "invalid_deferred_evm_payload_voucher_seller_mismatch",
+  "invalid_deferred_evm_payload_voucher_asset_mismatch",
+  "invalid_deferred_evm_payload_voucher_escrow_mismatch",
+  "invalid_deferred_evm_payload_voucher_chain_id_mismatch",
+  "invalid_deferred_evm_payload_voucher_nonce_mismatch",
+  "invalid_deferred_evm_payload_voucher_value_aggregate_decreasing",
+  "invalid_deferred_evm_payload_voucher_timestamp_decreasing",
+  "invalid_deferred_evm_payload_voucher_expiry_decreasing",
+  "invalid_deferred_evm_payload_voucher_zero_value_aggregate",
+  "invalid_deferred_evm_payload_previous_voucher_not_found",
+  "invalid_deferred_evm_payload_voucher_not_duplicate",
+  "invalid_deferred_evm_payload_voucher_could_not_settle_store",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -98,3 +114,9 @@ export const DeferredPaymentRequirementsSchema = BasePaymentRequirementsSchema.e
   ]),
 });
 export type DeferredPaymentRequirements = z.infer<typeof DeferredPaymentRequirementsSchema>;
+
+// x402DeferredSchemeContext
+export const DeferredSchemeContextSchema = z.object({
+  voucherStore: z.instanceof(VoucherStore),
+});
+export type DeferredSchemeContext = z.infer<typeof DeferredSchemeContextSchema>;

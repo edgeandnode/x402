@@ -10,6 +10,7 @@ import { ConnectedClient, Signer } from "../types/shared/wallet";
 import {
   PaymentPayload,
   PaymentRequirements,
+  SchemeContext,
   SettleResponse,
   VerifyResponse,
   ExactEvmPayload,
@@ -28,6 +29,7 @@ import { EXACT_SCHEME } from "../types/verify/schemes/exact";
  * @param client - The public client used for blockchain interactions
  * @param payload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
+ * @param schemeContext - Scheme specific context for verification
  * @returns A ValidPaymentRequest indicating if the payment is valid and any invalidation reason
  */
 export async function verify<
@@ -38,6 +40,7 @@ export async function verify<
   client: ConnectedClient | Signer,
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  schemeContext?: SchemeContext,
 ): Promise<VerifyResponse> {
   if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
@@ -59,7 +62,14 @@ export async function verify<
   if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
-      const valid = await verifyDeferred(client, payload, paymentRequirements);
+      if (!schemeContext) {
+        return {
+          isValid: false,
+          invalidReason: "missing_scheme_context",
+          payer: payload.payload.voucher.buyer,
+        };
+      }
+      const valid = await verifyDeferred(client, payload, paymentRequirements, schemeContext);
       return valid;
     } else {
       return {
@@ -87,12 +97,14 @@ export async function verify<
  * @param client - The signer wallet used for blockchain interactions
  * @param payload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
+ * @param schemeContext - Scheme specific context for verification
  * @returns A SettleResponse indicating if the payment is settled and any settlement reason
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   client: Signer,
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  schemeContext?: SchemeContext,
 ): Promise<SettleResponse> {
   if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
@@ -114,7 +126,16 @@ export async function settle<transport extends Transport, chain extends Chain>(
   if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
-      return settleDeferred(client, payload, paymentRequirements);
+      if (!schemeContext) {
+        return {
+          success: false,
+          errorReason: "missing_scheme_context",
+          transaction: "",
+          network: paymentRequirements.network,
+          payer: payload.payload.voucher.buyer,
+        };
+      }
+      return settleDeferred(client, payload, paymentRequirements, schemeContext);
     } else {
       return {
         success: false,

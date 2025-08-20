@@ -3,24 +3,41 @@ import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import {
   PaymentPayload,
   PaymentRequirements,
+  SchemeContext,
   SettleResponse,
   VerifyResponse,
 } from "../../../types/verify";
-import { DeferredPaymentPayloadSchema } from "../../../types/verify/schemes/deferred";
+import {
+  DeferredEvmPayloadVoucher,
+  DeferredEvmPayloadSignedVoucherSchema,
+  DeferredPaymentPayloadSchema,
+  DeferredPaymentRequirementsSchema,
+  DeferredSchemeContextSchema,
+} from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
-import { verifyPaymentRequirements, verifyVoucherSignature, verifyOnchainState } from "./verify";
+import {
+  verifyPaymentRequirements,
+  verifyVoucherSignature,
+  verifyOnchainState,
+  verifyVoucherContinuity,
+  verifyVoucherDuplicate,
+} from "./verify";
+import { VoucherStore } from "./store";
 
 /**
  * Verifies a payment payload against the required payment details
  *
  * This function performs several verification steps:
- * - ✅ Validates the payment payload matches the payment requirements
+ * - ✅ Validates the payment payload satisfies the payment requirements
+ * - ✅ Validates the voucher structure is valid and continuity is maintained
  * - ✅ Validates the voucher signature is valid
+ * - ✅ Validates the previous voucher is available for aggregation vouchers
  * - ✅ Validates the onchain state allows the payment to be settled
  *
  * @param client - The public client used for blockchain interactions
  * @param paymentPayload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
+ * @param schemeContext - Scheme specific context for verification
  * @returns A ValidPaymentRequest indicating if the payment is valid and any invalidation reason
  */
 export async function verify<
@@ -31,25 +48,58 @@ export async function verify<
   client: ConnectedClient<transport, chain, account>,
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  schemeContext: SchemeContext,
 ): Promise<VerifyResponse> {
-  // Verify payload is a deferred payment payload - plus type assert to DeferredPaymentPayload
   paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
+  paymentRequirements = DeferredPaymentRequirementsSchema.parse(paymentRequirements);
+  const { voucherStore } = DeferredSchemeContextSchema.parse(schemeContext.deferred);
 
   // Verify the payment payload matches the payment requirements
-  const requirementsResult = await verifyPaymentRequirements(paymentPayload, paymentRequirements);
-  if (requirementsResult) {
+  const requirementsResult = verifyPaymentRequirements(paymentPayload, paymentRequirements);
+  if (!requirementsResult.isValid) {
     return requirementsResult;
+  }
+
+  // Verify voucher structure and continuity
+  const continuityResult = verifyVoucherContinuity(paymentPayload, paymentRequirements);
+  if (!continuityResult.isValid) {
+    return continuityResult;
   }
 
   // Verify voucher signature is valid
   const signatureResult = await verifyVoucherSignature(paymentPayload);
-  if (signatureResult) {
+  if (!signatureResult.isValid) {
     return signatureResult;
+  }
+
+  // For aggregation vouchers, verify previous voucher availability
+  if (paymentRequirements.extra.type === "aggregation") {
+    const previousStoreVoucher = await voucherStore.getVoucher(
+      paymentRequirements.extra.voucher.id,
+    );
+    if (!previousStoreVoucher) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
+    const previousPaymentRequirementsVoucher = DeferredEvmPayloadSignedVoucherSchema.parse({
+      ...paymentRequirements.extra.voucher,
+      signature: paymentRequirements.extra.signature,
+    });
+    const duplicateResult = verifyVoucherDuplicate(
+      previousPaymentRequirementsVoucher,
+      previousStoreVoucher,
+    );
+    if (!duplicateResult.isValid) {
+      return duplicateResult;
+    }
   }
 
   // Verify the onchain state allows the payment to be settled
   const onchainResult = await verifyOnchainState(client, paymentPayload, paymentRequirements);
-  if (onchainResult) {
+  if (!onchainResult.isValid) {
     return onchainResult;
   }
 
@@ -69,18 +119,21 @@ export async function verify<
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param paymentPayload - The signed payment payload containing the transfer parameters and signature
  * @param paymentRequirements - The original payment details that were used to create the payload
+ * @param schemeContext - Scheme specific context for verification
  * @returns A PaymentExecutionResponse containing the transaction status and hash
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   wallet: SignerWallet<chain, transport>,
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  schemeContext: SchemeContext,
 ): Promise<SettleResponse> {
   // Verify payload is a deferred payment payload - plus type assert to DeferredPaymentPayload
   paymentPayload = DeferredPaymentPayloadSchema.parse(paymentPayload);
+  const { voucherStore } = DeferredSchemeContextSchema.parse(schemeContext.deferred);
 
   // re-verify to ensure the payment is still valid
-  const valid = await verify(wallet, paymentPayload, paymentRequirements);
+  const valid = await verify(wallet, paymentPayload, paymentRequirements, schemeContext);
 
   if (!valid.isValid) {
     return {
@@ -93,7 +146,35 @@ export async function settle<transport extends Transport, chain extends Chain>(
   }
 
   const { voucher, signature } = paymentPayload.payload;
+  const response = await settleVoucher(wallet, voucher, signature, voucherStore);
 
+  return {
+    ...response,
+    network: paymentPayload.network,
+  };
+}
+
+/**
+ * Executes the voucher settlement transaction. The facilitator can invoke this function directly to settle a
+ * voucher in a deferred manner, outside of the x402 handshake.
+ *
+ * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner,
+ * in such cases, the payment is not re-verified. The facilitator is expected to have already performed verification
+ * at voucher creation time during the x402 handshake. The deferred escrow contract adds an additional layer of
+ * validation ensuring invalid payments cannot be settled.
+ *
+ * @param wallet - The facilitator wallet that will submit the transaction
+ * @param voucher - The voucher to settle
+ * @param signature - The signature of the voucher
+ * @param voucherStore - The voucher store to use for verification
+ * @returns A PaymentExecutionResponse containing the transaction status and hash
+ */
+export async function settleVoucher<transport extends Transport, chain extends Chain>(
+  wallet: SignerWallet<chain, transport>,
+  voucher: DeferredEvmPayloadVoucher,
+  signature: string,
+  voucherStore: VoucherStore,
+): Promise<SettleResponse> {
   const tx = await wallet.writeContract({
     address: voucher.escrow as Address,
     abi: deferredEscrowABI,
@@ -123,15 +204,32 @@ export async function settle<transport extends Transport, chain extends Chain>(
       success: false,
       errorReason: "invalid_transaction_state",
       transaction: tx,
-      network: paymentPayload.network,
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
+    };
+  }
+
+  try {
+    const success = await voucherStore.markVoucherSettled(voucher.id);
+    if (!success) {
+      return {
+        success: false,
+        errorReason: "invalid_deferred_evm_payload_voucher_could_not_settle_store",
+        transaction: tx,
+        payer: voucher.buyer,
+      };
+    }
+  } catch {
+    return {
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_voucher_could_not_settle_store",
+      transaction: tx,
+      payer: voucher.buyer,
     };
   }
 
   return {
     success: true,
     transaction: tx,
-    network: paymentPayload.network,
-    payer: paymentPayload.payload.voucher.buyer,
+    payer: voucher.buyer,
   };
 }
