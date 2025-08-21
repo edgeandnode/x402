@@ -120,3 +120,33 @@ export const DeferredSchemeContextSchema = z.object({
   voucherStore: z.instanceof(VoucherStore),
 });
 export type DeferredSchemeContext = z.infer<typeof DeferredSchemeContextSchema>;
+
+// x402DeferredErrorResponse
+export const DeferredErrorResponseSchema = z.object({
+  error: z.string(),
+  details: z.any().optional(),
+});
+export type DeferredErrorResponse = z.infer<typeof DeferredErrorResponseSchema>;
+
+// x402DeferredVoucherResponse
+export const DeferredVoucherResponseSchema = z.union([
+  DeferredEvmPayloadSignedVoucherSchema,
+  DeferredErrorResponseSchema,
+]);
+export type DeferredVoucherResponse = z.infer<typeof DeferredVoucherResponseSchema>;
+
+// x402DeferredVoucherHistoryResponse
+export const DeferredVouchersResponseSchema = z.union([
+  z.object({
+    history: z.array(DeferredEvmPayloadSignedVoucherSchema),
+    count: z.number(),
+    buyer: z.string(),
+    seller: z.string(),
+    pagination: z.object({
+      limit: z.number(),
+      offset: z.number(),
+    }),
+  }),
+  DeferredErrorResponseSchema,
+]);
+export type DeferredVouchersResponse = z.infer<typeof DeferredVouchersResponseSchema>;

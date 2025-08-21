@@ -159,9 +159,9 @@ export async function settle<transport extends Transport, chain extends Chain>(
  * voucher in a deferred manner, outside of the x402 handshake.
  *
  * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner,
- * in such cases, the payment is not re-verified. The facilitator is expected to have already performed verification
- * at voucher creation time during the x402 handshake. The deferred escrow contract adds an additional layer of
- * validation ensuring invalid payments cannot be settled.
+ * in such cases, the payment will not be re-verified before settlement. The facilitator is expected to have
+ * already performed verification at voucher creation time during the x402 handshake. The deferred escrow contract
+ * adds an additional layer of validation ensuring invalid payments cannot be settled.
  *
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param voucher - The voucher to settle
@@ -209,8 +209,8 @@ export async function settleVoucher<transport extends Transport, chain extends C
   }
 
   try {
-    const success = await voucherStore.markVoucherSettled(voucher.id);
-    if (!success) {
+    const actionResult = await voucherStore.markVoucherSettled(voucher.id);
+    if (!actionResult.success) {
       return {
         success: false,
         errorReason: "invalid_deferred_evm_payload_voucher_could_not_settle_store",
