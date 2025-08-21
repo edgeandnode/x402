@@ -1,15 +1,18 @@
 import { Account, Chain, Address, Hex, Transport, getAddress } from "viem";
 import {
   DeferredEvmPayloadSignedVoucher,
+  DeferredEvmPayloadSignedVoucherSchema,
+  DeferredEvmPayloadVoucher,
   DeferredPaymentPayload,
   DeferredPaymentRequirements,
   DEFERRRED_SCHEME,
 } from "../../../types/verify/schemes/deferred";
-import { PaymentRequirements, VerifyResponse } from "../../../types";
+import { VerifyResponse } from "../../../types";
 import { getNetworkId } from "../../../shared";
 import { verifyVoucher } from "./sign";
 import { ConnectedClient } from "../../../types/shared/evm/wallet";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
+import { VoucherStore } from "./store";
 
 /**
  * Verifies the payment payload satisfies the payment requirements.
@@ -245,22 +248,24 @@ export function verifyVoucherContinuity(
  * - ✅ Verify the voucher signature is valid
  * - ✅ Verify the voucher signer is the buyer
  *
- * @param paymentPayload - The payment payload to verify
+ * @param voucher - The voucher to verify
+ * @param signature - The signature of the voucher
  * @returns Verification result
  */
 export async function verifyVoucherSignature(
-  paymentPayload: DeferredPaymentPayload,
+  voucher: DeferredEvmPayloadVoucher,
+  signature: string,
 ): Promise<VerifyResponse> {
   const voucherSignatureIsValid = await verifyVoucher(
-    paymentPayload.payload.voucher,
-    paymentPayload.payload.signature as Hex,
-    paymentPayload.payload.voucher.buyer as Address,
+    voucher,
+    signature as Hex,
+    voucher.buyer as Address,
   );
   if (!voucherSignatureIsValid) {
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
     };
   }
 
@@ -270,7 +275,43 @@ export async function verifyVoucherSignature(
 }
 
 /**
- * Verifies two vouchers are the same
+ * Verifies the previous voucher is available in the voucher store
+ *
+ * @param voucher - The voucher to verify
+ * @param signature - The signature of the voucher
+ * @param voucherStore - The voucher store to use for verification
+ * @returns Verification result
+ */
+export async function verifyPreviousVoucherAvailability(
+  voucher: DeferredEvmPayloadVoucher,
+  signature: string,
+  voucherStore: VoucherStore,
+): Promise<VerifyResponse> {
+  const storeVoucher = await voucherStore.getVoucher(voucher.id);
+  if (!storeVoucher) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
+      payer: voucher.buyer,
+    };
+  }
+  const signedVoucher = DeferredEvmPayloadSignedVoucherSchema.parse({
+    ...voucher,
+    signature,
+  });
+
+  const duplicateResult = verifyVoucherDuplicate(signedVoucher, storeVoucher);
+  if (!duplicateResult.isValid) {
+    return duplicateResult;
+  }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies two vouchers are the same, down to the signature
  *
  * @param newVoucher - The new voucher to verify
  * @param previousVoucher - The previous voucher to verify against
@@ -313,8 +354,7 @@ export function verifyVoucherDuplicate(
  * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param client - The client to use for the onchain state verification
- * @param paymentPayload - The payment payload to verify
- * @param paymentRequirements - The payment requirements to verify
+ * @param voucher - The voucher to verify
  * @returns Verification result
  */
 export async function verifyOnchainState<
@@ -323,26 +363,14 @@ export async function verifyOnchainState<
   account extends Account | undefined,
 >(
   client: ConnectedClient<transport, chain, account>,
-  paymentPayload: DeferredPaymentPayload,
-  paymentRequirements: PaymentRequirements,
+  voucher: DeferredEvmPayloadVoucher,
 ): Promise<VerifyResponse> {
-  let chainId: number;
-  try {
-    chainId = getNetworkId(paymentRequirements.network);
-  } catch {
-    return {
-      isValid: false,
-      invalidReason: `invalid_network_unsupported`,
-      payer: paymentPayload.payload.voucher.buyer,
-    };
-  }
-
   // Verify the client is connected to the chain specified in the payment requirements
-  if (client.chain.id !== chainId) {
+  if (client.chain.id !== voucher.chainId) {
     return {
       isValid: false,
       invalidReason: "invalid_client_network",
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
     };
   }
 
@@ -351,21 +379,21 @@ export async function verifyOnchainState<
   let voucherOutstandingAmount: bigint;
   try {
     [voucherOutstandingAmount] = await client.readContract({
-      address: paymentPayload.payload.voucher.escrow as Address,
+      address: voucher.escrow as Address,
       abi: deferredEscrowABI,
       functionName: "getOutstandingAndCollectableAmount",
       args: [
         {
-          id: paymentPayload.payload.voucher.id as Hex,
-          buyer: paymentPayload.payload.voucher.buyer as Address,
-          seller: paymentPayload.payload.voucher.seller as Address,
-          valueAggregate: BigInt(paymentPayload.payload.voucher.valueAggregate),
-          asset: paymentPayload.payload.voucher.asset as Address,
-          timestamp: BigInt(paymentPayload.payload.voucher.timestamp),
-          nonce: BigInt(paymentPayload.payload.voucher.nonce),
-          escrow: paymentPayload.payload.voucher.escrow as Address,
-          chainId: BigInt(paymentPayload.payload.voucher.chainId),
-          expiry: BigInt(paymentPayload.payload.voucher.expiry),
+          id: voucher.id as Hex,
+          buyer: voucher.buyer as Address,
+          seller: voucher.seller as Address,
+          valueAggregate: BigInt(voucher.valueAggregate),
+          asset: voucher.asset as Address,
+          timestamp: BigInt(voucher.timestamp),
+          nonce: BigInt(voucher.nonce),
+          escrow: voucher.escrow as Address,
+          chainId: BigInt(voucher.chainId),
+          expiry: BigInt(voucher.expiry),
         },
       ],
     });
@@ -373,7 +401,7 @@ export async function verifyOnchainState<
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
     };
   }
   let buyerAccount: {
@@ -383,28 +411,24 @@ export async function verifyOnchainState<
   };
   try {
     buyerAccount = await client.readContract({
-      address: paymentPayload.payload.voucher.escrow as Address,
+      address: voucher.escrow as Address,
       abi: deferredEscrowABI,
       functionName: "getAccount",
-      args: [
-        paymentPayload.payload.voucher.buyer as Address,
-        paymentPayload.payload.voucher.seller as Address,
-        paymentPayload.payload.voucher.asset as Address,
-      ],
+      args: [voucher.buyer as Address, voucher.seller as Address, voucher.asset as Address],
     });
   } catch (error) {
     console.log(error);
     return {
       isValid: false,
       invalidReason: "invalid_deferred_evm_contract_call_failed_account",
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
     };
   }
   if (buyerAccount.balance < voucherOutstandingAmount) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
-      payer: paymentPayload.payload.voucher.buyer,
+      payer: voucher.buyer,
     };
   }
 

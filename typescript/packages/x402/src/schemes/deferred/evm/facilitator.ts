@@ -9,7 +9,6 @@ import {
 } from "../../../types/verify";
 import {
   DeferredEvmPayloadVoucher,
-  DeferredEvmPayloadSignedVoucherSchema,
   DeferredPaymentPayloadSchema,
   DeferredPaymentRequirementsSchema,
   DeferredSchemeContextSchema,
@@ -20,7 +19,7 @@ import {
   verifyVoucherSignature,
   verifyOnchainState,
   verifyVoucherContinuity,
-  verifyVoucherDuplicate,
+  verifyPreviousVoucherAvailability,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -67,38 +66,28 @@ export async function verify<
   }
 
   // Verify voucher signature is valid
-  const signatureResult = await verifyVoucherSignature(paymentPayload);
+  const signatureResult = await verifyVoucherSignature(
+    paymentPayload.payload.voucher,
+    paymentPayload.payload.signature,
+  );
   if (!signatureResult.isValid) {
     return signatureResult;
   }
 
-  // For aggregation vouchers, verify previous voucher availability
+  // Verify previous voucher availability
   if (paymentRequirements.extra.type === "aggregation") {
-    const previousStoreVoucher = await voucherStore.getVoucher(
-      paymentRequirements.extra.voucher.id,
+    const previousVoucherResult = await verifyPreviousVoucherAvailability(
+      paymentRequirements.extra.voucher,
+      paymentRequirements.extra.signature,
+      voucherStore,
     );
-    if (!previousStoreVoucher) {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
-        payer: paymentPayload.payload.voucher.buyer,
-      };
-    }
-    const previousPaymentRequirementsVoucher = DeferredEvmPayloadSignedVoucherSchema.parse({
-      ...paymentRequirements.extra.voucher,
-      signature: paymentRequirements.extra.signature,
-    });
-    const duplicateResult = verifyVoucherDuplicate(
-      previousPaymentRequirementsVoucher,
-      previousStoreVoucher,
-    );
-    if (!duplicateResult.isValid) {
-      return duplicateResult;
+    if (!previousVoucherResult.isValid) {
+      return previousVoucherResult;
     }
   }
 
   // Verify the onchain state allows the payment to be settled
-  const onchainResult = await verifyOnchainState(client, paymentPayload, paymentRequirements);
+  const onchainResult = await verifyOnchainState(client, paymentPayload.payload.voucher);
   if (!onchainResult.isValid) {
     return onchainResult;
   }
@@ -158,10 +147,9 @@ export async function settle<transport extends Transport, chain extends Chain>(
  * Executes the voucher settlement transaction. The facilitator can invoke this function directly to settle a
  * voucher in a deferred manner, outside of the x402 handshake.
  *
- * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner,
- * in such cases, the payment will not be re-verified before settlement. The facilitator is expected to have
- * already performed verification at voucher creation time during the x402 handshake. The deferred escrow contract
- * adds an additional layer of validation ensuring invalid payments cannot be settled.
+ * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner
+ * which means some of the verification steps cannot be repeated before settlement. However, as long as the voucher
+ * has a matching signature and the on chain verification is successful the voucher can be settled.
  *
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param voucher - The voucher to settle
@@ -175,6 +163,28 @@ export async function settleVoucher<transport extends Transport, chain extends C
   signature: string,
   voucherStore: VoucherStore,
 ): Promise<SettleResponse> {
+  // Verify the voucher signature
+  const signatureResult = await verifyVoucherSignature(voucher, signature);
+  if (!signatureResult.isValid) {
+    return {
+      success: false,
+      errorReason: signatureResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+      transaction: "",
+      payer: voucher.buyer,
+    };
+  }
+
+  // Verify the onchain state allows the payment to be settled
+  const valid = await verifyOnchainState(wallet, voucher);
+  if (!valid.isValid) {
+    return {
+      success: false,
+      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+      transaction: "",
+      payer: voucher.buyer,
+    };
+  }
+
   const tx = await wallet.writeContract({
     address: voucher.escrow as Address,
     abi: deferredEscrowABI,
