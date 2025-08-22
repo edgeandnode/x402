@@ -149,7 +149,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
  *
  * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner
  * which means some of the verification steps cannot be repeated before settlement. However, as long as the voucher
- * has a matching signature and the on chain verification is successful the voucher can be settled.
+ * has a matching signature and the on chain verification is successful the voucher should be safe to settle.
  *
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param voucher - The voucher to settle
