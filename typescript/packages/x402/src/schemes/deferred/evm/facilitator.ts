@@ -185,30 +185,40 @@ export async function settleVoucher<transport extends Transport, chain extends C
     };
   }
 
-  const tx = await wallet.writeContract({
-    address: voucher.escrow as Address,
-    abi: deferredEscrowABI,
-    functionName: "collect" as const,
-    args: [
-      {
-        id: voucher.id as Hex,
-        buyer: voucher.buyer as Address,
-        seller: voucher.seller as Address,
-        valueAggregate: BigInt(voucher.valueAggregate),
-        asset: voucher.asset as Address,
-        timestamp: BigInt(voucher.timestamp),
-        nonce: BigInt(voucher.nonce),
-        escrow: voucher.escrow as Address,
-        chainId: BigInt(voucher.chainId),
-        expiry: BigInt(voucher.expiry),
-      },
-      signature as Hex,
-    ],
-    chain: wallet.chain as Chain,
-  });
+  let tx = "";
+  try {
+    tx = await wallet.writeContract({
+      address: voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "collect" as const,
+      args: [
+        {
+          id: voucher.id as Hex,
+          buyer: voucher.buyer as Address,
+          seller: voucher.seller as Address,
+          valueAggregate: BigInt(voucher.valueAggregate),
+          asset: voucher.asset as Address,
+          timestamp: BigInt(voucher.timestamp),
+          nonce: BigInt(voucher.nonce),
+          escrow: voucher.escrow as Address,
+          chainId: BigInt(voucher.chainId),
+          expiry: BigInt(voucher.expiry),
+        },
+        signature as Hex,
+      ],
+      chain: wallet.chain as Chain,
+    });
+  } catch (error) {
+    console.error(error);
+    return {
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: voucher.buyer,
+    };
+  }
 
-  const receipt = await wallet.waitForTransactionReceipt({ hash: tx });
-
+  const receipt = await wallet.waitForTransactionReceipt({ hash: tx as `0x${string}` });
   if (receipt.status !== "success") {
     return {
       success: false,

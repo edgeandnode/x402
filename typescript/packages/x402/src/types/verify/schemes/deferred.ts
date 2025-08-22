@@ -138,10 +138,8 @@ export type DeferredVoucherResponse = z.infer<typeof DeferredVoucherResponseSche
 // x402DeferredVoucherHistoryResponse
 export const DeferredVouchersResponseSchema = z.union([
   z.object({
-    history: z.array(DeferredEvmPayloadSignedVoucherSchema),
+    data: z.array(DeferredEvmPayloadSignedVoucherSchema),
     count: z.number(),
-    buyer: z.string(),
-    seller: z.string(),
     pagination: z.object({
       limit: z.number(),
       offset: z.number(),

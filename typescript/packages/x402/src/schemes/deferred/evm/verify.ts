@@ -287,7 +287,7 @@ export async function verifyPreviousVoucherAvailability(
   signature: string,
   voucherStore: VoucherStore,
 ): Promise<VerifyResponse> {
-  const storeVoucher = await voucherStore.getVoucher(voucher.id);
+  const storeVoucher = await voucherStore.getVoucher(voucher.id, voucher.nonce);
   if (!storeVoucher) {
     return {
       isValid: false,
