@@ -1,4 +1,4 @@
-import { Address, Chain, Hex, LocalAccount, Transport } from "viem";
+import { Address, Chain, getAddress, Hex, LocalAccount, Transport } from "viem";
 import { getNetworkId } from "../../../shared/network";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
@@ -63,14 +63,14 @@ export function createNewVoucher(
   );
 
   return {
-    id: extra.voucher.id,
-    buyer: buyer,
-    seller: paymentRequirements.payTo,
+    id: extra.voucher.id.toLowerCase(),
+    buyer: getAddress(buyer),
+    seller: getAddress(paymentRequirements.payTo),
     valueAggregate: paymentRequirements.maxAmountRequired,
-    asset: paymentRequirements.asset,
+    asset: getAddress(paymentRequirements.asset),
     timestamp: Math.floor(Date.now() / 1000),
     nonce: 0,
-    escrow: extra.voucher.escrow,
+    escrow: getAddress(extra.voucher.escrow),
     chainId: getNetworkId(paymentRequirements.network),
     expiry: Math.floor(Date.now() / 1000) + EXPIRY_TIME,
   };
@@ -95,10 +95,10 @@ export async function aggregateVoucher(
   const now = Math.floor(Date.now() / 1000);
 
   // verify previous voucher matches payment requirements
-  if (paymentRequirements.payTo !== seller) {
+  if (getAddress(paymentRequirements.payTo) !== getAddress(seller)) {
     throw new Error("Invalid voucher seller");
   }
-  if (paymentRequirements.asset !== asset) {
+  if (getAddress(paymentRequirements.asset) !== getAddress(asset)) {
     throw new Error("Invalid voucher asset");
   }
   if (getNetworkId(paymentRequirements.network) !== chainId) {

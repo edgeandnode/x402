@@ -1,4 +1,4 @@
-import { Account, Address, Chain, Transport, Hex } from "viem";
+import { Account, Address, Chain, Transport, Hex, parseEventLogs } from "viem";
 import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import {
   PaymentPayload,
@@ -228,8 +228,15 @@ export async function settleVoucher<transport extends Transport, chain extends C
     };
   }
 
+  const logs = parseEventLogs({
+    abi: deferredEscrowABI,
+    eventName: "VoucherCollected",
+    logs: receipt.logs,
+  });
+  const collectedAmount = logs.length > 0 ? BigInt(logs[0].args.amount) : BigInt(0);
+
   try {
-    const actionResult = await voucherStore.markVoucherSettled(voucher.id);
+    const actionResult = await voucherStore.settleVoucher(voucher, tx, collectedAmount);
     if (!actionResult.success) {
       return {
         success: false,
@@ -241,7 +248,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
   } catch {
     return {
       success: false,
-      errorReason: "invalid_deferred_evm_payload_voucher_could_not_settle_store",
+      errorReason: "invalid_deferred_evm_payload_voucher_error_settling_store",
       transaction: tx,
       payer: voucher.buyer,
     };

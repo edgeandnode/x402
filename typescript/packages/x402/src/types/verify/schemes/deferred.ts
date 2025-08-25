@@ -4,6 +4,7 @@ import {
   EvmSignatureRegex,
   HexEncoded64ByteRegex,
   EvmMaxAtomicUnits,
+  EvmTransactionHashRegex,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
@@ -40,6 +41,7 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_previous_voucher_not_found",
   "invalid_deferred_evm_payload_voucher_not_duplicate",
   "invalid_deferred_evm_payload_voucher_could_not_settle_store",
+  "invalid_deferred_evm_payload_voucher_error_settling_store",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -62,6 +64,18 @@ export const DeferredEvmPayloadSignedVoucherSchema = DeferredEvmPayloadVoucherSc
   signature: z.string().regex(EvmSignatureRegex),
 });
 export type DeferredEvmPayloadSignedVoucher = z.infer<typeof DeferredEvmPayloadSignedVoucherSchema>;
+
+// x402DeferredVoucherCollection
+export const DeferredVoucherCollectionSchema = z.object({
+  voucherId: z.string().regex(HexEncoded64ByteRegex),
+  voucherNonce: z.number().int().nonnegative(),
+  transactionHash: z.string().regex(EvmTransactionHashRegex),
+  collectedAmount: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  asset: z.string().regex(EvmAddressRegex),
+  chainId: z.number().int().nonnegative(),
+  collectedAt: z.number().int().nonnegative(),
+});
+export type DeferredVoucherCollection = z.infer<typeof DeferredVoucherCollectionSchema>;
 
 // x402DeferredEvmPayload
 export const DeferredEvmPayloadSchema = z.object({
@@ -135,10 +149,10 @@ export const DeferredVoucherResponseSchema = z.union([
 ]);
 export type DeferredVoucherResponse = z.infer<typeof DeferredVoucherResponseSchema>;
 
-// x402DeferredVoucherHistoryResponse
+// x402DeferredVouchersResponse
 export const DeferredVouchersResponseSchema = z.union([
   z.object({
-    data: z.array(DeferredEvmPayloadSignedVoucherSchema),
+    data: z.array(DeferredVoucherResponseSchema),
     count: z.number(),
     pagination: z.object({
       limit: z.number(),
@@ -148,3 +162,17 @@ export const DeferredVouchersResponseSchema = z.union([
   DeferredErrorResponseSchema,
 ]);
 export type DeferredVouchersResponse = z.infer<typeof DeferredVouchersResponseSchema>;
+
+// x402DeferredVoucherCollectionResponse
+export const DeferredVoucherCollectionResponseSchema = z.object({
+  voucherId: z.string(),
+  voucherNonce: z.number(),
+  transactionHash: z.string(),
+  collectedAmount: z.string(),
+  asset: z.string(),
+  chainId: z.number(),
+  timestamp: z.number(),
+});
+export type DeferredVoucherCollectionResponse = z.infer<
+  typeof DeferredVoucherCollectionResponseSchema
+>;

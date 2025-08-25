@@ -156,7 +156,7 @@ export function verifyVoucherContinuity(
   if (paymentRequirements.extra.type === "aggregation") {
     const previousVoucher = paymentRequirements.extra.voucher;
     // id
-    if (voucher.id !== previousVoucher.id) {
+    if (voucher.id.toLowerCase() !== previousVoucher.id.toLowerCase()) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_id_mismatch",
@@ -164,7 +164,7 @@ export function verifyVoucherContinuity(
       };
     }
     // buyer
-    if (voucher.buyer !== previousVoucher.buyer) {
+    if (getAddress(voucher.buyer) !== getAddress(previousVoucher.buyer)) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_buyer_mismatch",
@@ -172,7 +172,7 @@ export function verifyVoucherContinuity(
       };
     }
     // seller
-    if (voucher.seller !== previousVoucher.seller) {
+    if (getAddress(voucher.seller) !== getAddress(previousVoucher.seller)) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_seller_mismatch",
@@ -188,7 +188,7 @@ export function verifyVoucherContinuity(
       };
     }
     // asset
-    if (voucher.asset !== previousVoucher.asset) {
+    if (getAddress(voucher.asset) !== getAddress(previousVoucher.asset)) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_asset_mismatch",
@@ -212,7 +212,7 @@ export function verifyVoucherContinuity(
       };
     }
     // escrow
-    if (voucher.escrow !== previousVoucher.escrow) {
+    if (getAddress(voucher.escrow) !== getAddress(previousVoucher.escrow)) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_escrow_mismatch",
@@ -322,14 +322,14 @@ export function verifyVoucherDuplicate(
   previousVoucher: DeferredEvmPayloadSignedVoucher,
 ): VerifyResponse {
   if (
-    newVoucher.id === previousVoucher.id &&
-    newVoucher.buyer === previousVoucher.buyer &&
-    newVoucher.seller === previousVoucher.seller &&
+    newVoucher.id.toLowerCase() === previousVoucher.id.toLowerCase() &&
+    getAddress(newVoucher.buyer) === getAddress(previousVoucher.buyer) &&
+    getAddress(newVoucher.seller) === getAddress(previousVoucher.seller) &&
     newVoucher.valueAggregate === previousVoucher.valueAggregate &&
-    newVoucher.asset === previousVoucher.asset &&
+    getAddress(newVoucher.asset) === getAddress(previousVoucher.asset) &&
     newVoucher.timestamp === previousVoucher.timestamp &&
     newVoucher.nonce === previousVoucher.nonce &&
-    newVoucher.escrow === previousVoucher.escrow &&
+    getAddress(newVoucher.escrow) === getAddress(previousVoucher.escrow) &&
     newVoucher.chainId === previousVoucher.chainId &&
     newVoucher.expiry === previousVoucher.expiry &&
     newVoucher.signature === previousVoucher.signature
