@@ -2,7 +2,7 @@ import {
   EvmNetworkToChainId,
   Network,
   SvmNetworkToChainId,
-  ChainIdToEvmNetwork,
+  ChainIdToNetwork,
 } from "../types/shared";
 
 /**
@@ -30,8 +30,8 @@ export function getNetworkId(network: Network): number {
  * @throws Error if the chain ID is not supported
  */
 export function getNetworkName(chainId: number): Network {
-  if (ChainIdToEvmNetwork[chainId]) {
-    return ChainIdToEvmNetwork[chainId];
+  if (ChainIdToNetwork[chainId]) {
+    return ChainIdToNetwork[chainId];
   }
 
   // TODO: Solana
