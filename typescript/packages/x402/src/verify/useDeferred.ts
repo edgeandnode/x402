@@ -111,9 +111,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     if (seller !== undefined) params.append("seller", seller);
     const queryString = params.toString();
 
-    const response = await fetch(
-      `${url}/deferred/vouchers?${queryString ? `?${queryString}` : ""}`,
-    );
+    const response = await fetch(`${url}/deferred/vouchers${queryString ? `?${queryString}` : ""}`);
     const responseJson = (await response.json()) as DeferredVouchersResponse;
 
     if (response.status !== 200 || "error" in responseJson) {
@@ -176,9 +174,9 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
         "Content-Type": "application/json",
       },
     });
-    const responseJson = await response.json();
+    const responseJson = (await response.json()) as DeferredVoucherResponse;
 
-    if (response.status !== 201) {
+    if (response.status !== 201 || "error" in responseJson) {
       const errorMessage =
         (responseJson as DeferredErrorResponse).error ||
         `Failed to store voucher: ${response.statusText}`;
@@ -204,9 +202,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     const responseJson = await response.json();
 
     if (response.status !== 200) {
-      const errorMessage =
-        (responseJson as DeferredErrorResponse).error ||
-        `Failed to verify voucher: ${response.statusText}`;
+      const errorMessage = `Failed to verify voucher: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
@@ -229,9 +225,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     const responseJson = await response.json();
 
     if (response.status !== 200) {
-      const errorMessage =
-        (responseJson as DeferredErrorResponse).error ||
-        `Failed to settle voucher: ${response.statusText}`;
+      const errorMessage = `Failed to settle voucher: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
