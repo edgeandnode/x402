@@ -3,25 +3,34 @@ import { PaymentRequirements } from "../../../types";
 import {
   DeferredPaymentPayload,
   DeferredPaymentRequirements,
+  DeferredEvmPayloadSignedVoucher,
   DEFERRRED_SCHEME,
 } from "../../../types/verify/schemes/deferred";
-import { verifyPaymentRequirements, verifyVoucherSignature, verifyOnchainState } from "./verify";
-import { ConnectedClient } from "../../../types/shared/evm/wallet";
-import { verifyVoucher } from "./sign";
+import {
+  verifyPaymentRequirements,
+  verifyVoucherSignature,
+  verifyOnchainState,
+  verifyVoucherContinuity,
+  verifyPreviousVoucherAvailability,
+  verifyVoucherDuplicate,
+} from "./verify";
+import { ConnectedClient, createSigner } from "../../../types/shared/evm/wallet";
 import { getNetworkId } from "../../../shared";
-import { Account, Chain, Transport } from "viem";
-
-vi.mock("./sign", () => ({
-  verifyVoucher: vi.fn(),
-}));
+import { VoucherStore } from "./store";
+import { Account, Chain, getAddress, Transport } from "viem";
+import { signVoucher } from "./sign";
 
 vi.mock("../../../shared", () => ({
   getNetworkId: vi.fn(),
 }));
 
-const buyerAddress = "0xf33332f96E5EA32c90a5301b646Bf5e93EA1D892";
+const buyer = createSigner(
+  "base-sepolia",
+  "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+);
+const buyerAddress = "0x05159b6100E8c7A3BbaE174A94c32E1E2e37059b";
 const sellerAddress = "0x1234567890123456789012345678901234567890";
-const escrowAddress = "0xffffff12345678901234567890123456789fffff";
+const escrowAddress = "0xffFfFf12345678901234567890123456789fffFF";
 const assetAddress = "0x1111111111111111111111111111111111111111";
 const voucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
 const voucherSignature =
@@ -79,12 +88,12 @@ describe("verifyPaymentRequirements", () => {
     vi.resetAllMocks();
   });
 
-  it("should return undefined for valid payment requirements with new voucher", async () => {
-    const result = await verifyPaymentRequirements(mockPaymentPayload, mockPaymentRequirements);
+  it("should return isValid: true for valid payment requirements with new voucher", () => {
+    const result = verifyPaymentRequirements(mockPaymentPayload, mockPaymentRequirements);
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return undefined for valid payment requirements with aggregation voucher", async () => {
+  it("should return isValid: true for valid payment requirements with aggregation voucher", () => {
     const aggregationRequirements: PaymentRequirements = {
       ...mockPaymentRequirements,
       maxAmountRequired: "500000",
@@ -97,23 +106,23 @@ describe("verifyPaymentRequirements", () => {
         },
       },
     };
-    const result = await verifyPaymentRequirements(mockPaymentPayload, aggregationRequirements);
+    const result = verifyPaymentRequirements(mockPaymentPayload, aggregationRequirements);
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return error if payload scheme is not deferred", async () => {
+  it("should return error if payload scheme is not deferred", () => {
     const invalidPayload = {
       ...mockPaymentPayload,
       scheme: "immediate",
     } as unknown as DeferredPaymentPayload;
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    const result = verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_scheme",
     });
   });
 
-  it("should return error if requirements scheme is not deferred", async () => {
+  it("should return error if requirements scheme is not deferred", () => {
     const invalidRequirements = {
       ...mockPaymentRequirements,
       scheme: "immediate",
@@ -128,12 +137,12 @@ describe("verifyPaymentRequirements", () => {
     });
   });
 
-  it("should return error if payment payload network does not match payment requirements network", async () => {
+  it("should return error if payment payload network does not match payment requirements network", () => {
     const invalidPayload = {
       ...mockPaymentPayload,
       network: "base",
     } as DeferredPaymentPayload;
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    const result = verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_network_mismatch",
@@ -141,7 +150,36 @@ describe("verifyPaymentRequirements", () => {
     });
   });
 
-  it("should return error if voucher value is insufficient for new voucher", async () => {
+  it("should return error if network is not supported", () => {
+    vi.mocked(getNetworkId).mockImplementation(() => {
+      throw new Error("Unsupported network");
+    });
+    const result = verifyPaymentRequirements(mockPaymentPayload, mockPaymentRequirements);
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_network_unsupported",
+      payer: buyerAddress,
+    });
+    vi.resetAllMocks();
+  });
+
+  it("should return error if network is invalid", () => {
+    const invalidPayload = {
+      ...mockPaymentPayload,
+      network: "iotex",
+      payload: {
+        ...mockPaymentPayload.payload,
+      },
+    } as DeferredPaymentPayload;
+    const result = verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_network_mismatch",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if voucher value is insufficient for new voucher", () => {
     const invalidPayload = {
       ...mockPaymentPayload,
       payload: {
@@ -152,7 +190,7 @@ describe("verifyPaymentRequirements", () => {
         },
       },
     };
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    const result = verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_value",
@@ -160,7 +198,7 @@ describe("verifyPaymentRequirements", () => {
     });
   });
 
-  it("should return error if voucher value is insufficient for aggregation voucher", async () => {
+  it("should return error if voucher value is insufficient for aggregation voucher", () => {
     const aggregationRequirements: PaymentRequirements = {
       ...mockPaymentRequirements,
       extra: {
@@ -172,7 +210,7 @@ describe("verifyPaymentRequirements", () => {
         },
       },
     };
-    const result = await verifyPaymentRequirements(mockPaymentPayload, aggregationRequirements);
+    const result = verifyPaymentRequirements(mockPaymentPayload, aggregationRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_voucher_value",
@@ -180,12 +218,12 @@ describe("verifyPaymentRequirements", () => {
     });
   });
 
-  it("should return error if payTo does not match voucher seller", async () => {
+  it("should return error if payTo does not match voucher seller", () => {
     const invalidRequirements = {
       ...mockPaymentRequirements,
       payTo: "0x9999999999999999999999999999999999999999",
     };
-    const result = await verifyPaymentRequirements(mockPaymentPayload, invalidRequirements);
+    const result = verifyPaymentRequirements(mockPaymentPayload, invalidRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_recipient_mismatch",
@@ -193,7 +231,7 @@ describe("verifyPaymentRequirements", () => {
     });
   });
 
-  it("should return error if asset mismatch", async () => {
+  it("should return error if asset mismatch", () => {
     const invalidPayload = {
       ...mockPaymentPayload,
       payload: {
@@ -204,87 +242,480 @@ describe("verifyPaymentRequirements", () => {
         },
       },
     };
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
+    const result = verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_asset_mismatch",
       payer: buyerAddress,
     });
   });
-
-  it("should return error if network is not supported", async () => {
-    vi.mocked(getNetworkId).mockImplementation(() => {
-      throw new Error("Unsupported network");
-    });
-    const result = await verifyPaymentRequirements(mockPaymentPayload, mockPaymentRequirements);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_network_unsupported",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if chainId mismatch", async () => {
-    const invalidPayload = {
-      ...mockPaymentPayload,
-      payload: {
-        ...mockPaymentPayload.payload,
-        voucher: {
-          ...mockVoucher,
-          chainId: 1,
-        },
-      },
-    };
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_chain_id",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if voucher is expired", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const invalidPayload = {
-      ...mockPaymentPayload,
-      payload: {
-        ...mockPaymentPayload.payload,
-        voucher: {
-          ...mockVoucher,
-          expiry: now - 1, // 1 second in the past
-        },
-      },
-    };
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
-    // verifyPaymentRequirements doesn't check expiry, it returns isValid: true
-    expect(result).toEqual({ isValid: true });
-  });
-
-  it("should return error if voucher timestamp is in the future", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const invalidPayload = {
-      ...mockPaymentPayload,
-      payload: {
-        ...mockPaymentPayload.payload,
-        voucher: {
-          ...mockVoucher,
-          timestamp: now + 3600, // 1 hour in the future
-        },
-      },
-    };
-    const result = await verifyPaymentRequirements(invalidPayload, mockPaymentRequirements);
-    // verifyPaymentRequirements doesn't check timestamp, it returns isValid: true
-    expect(result).toEqual({ isValid: true });
-  });
 });
 
-describe("verifyVoucherSignature", () => {
-  const mockPaymentPayload: DeferredPaymentPayload = {
+describe("verifyVoucherContinuity", () => {
+  const baseVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
+  };
+
+  const basePaymentPayload: DeferredPaymentPayload = {
     x402Version: 1,
     scheme: DEFERRRED_SCHEME,
     network: "base-sepolia",
     payload: {
       signature: voucherSignature,
+      voucher: baseVoucher,
+    },
+  };
+
+  const aggregatedVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "12000000",
+    asset: assetAddress,
+    timestamp: 1715769600 + 100,
+    nonce: 1,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 60, // 60 days
+  };
+
+  const aggregatedPaymentPayload: DeferredPaymentPayload = {
+    x402Version: 1,
+    scheme: DEFERRRED_SCHEME,
+    network: "base-sepolia",
+    payload: {
+      signature: voucherSignature, // does not matter
+      voucher: aggregatedVoucher,
+    },
+  };
+
+  const baseNewVoucherPaymentRequirements: PaymentRequirements = {
+    scheme: DEFERRRED_SCHEME,
+    network: "base-sepolia",
+    maxAmountRequired: "1000000",
+    resource: "https://example.com/resource",
+    description: "Test resource",
+    mimeType: "application/json",
+    payTo: sellerAddress,
+    maxTimeoutSeconds: 300,
+    asset: assetAddress,
+    extra: {
+      type: "new",
+      voucher: {
+        id: voucherId,
+        escrow: escrowAddress,
+      },
+    },
+  };
+
+  const baseAggregationVoucherPaymentRequirements: PaymentRequirements = {
+    scheme: DEFERRRED_SCHEME,
+    network: "base-sepolia",
+    maxAmountRequired: "1000000",
+    resource: "https://example.com/resource",
+    description: "Test resource",
+    mimeType: "application/json",
+    payTo: sellerAddress,
+    maxTimeoutSeconds: 300,
+    asset: assetAddress,
+    extra: {
+      type: "aggregation",
+      signature: voucherSignature,
+      voucher: baseVoucher,
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Mock current time to be within valid range
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date((baseVoucher.timestamp + 100) * 1000)); // 100 seconds after voucher timestamp
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+  });
+
+  it("should return valid if new voucher is valid", () => {
+    const result = verifyVoucherContinuity(basePaymentPayload, baseNewVoucherPaymentRequirements);
+    expect(result).toEqual({
+      isValid: true,
+    });
+  });
+
+  it("should return valid if aggregation voucher is valid", () => {
+    const result = verifyVoucherContinuity(
+      aggregatedPaymentPayload,
+      baseAggregationVoucherPaymentRequirements,
+    );
+    expect(result).toEqual({
+      isValid: true,
+    });
+  });
+
+  it("should return error if voucher is expired", () => {
+    const expiredPaymentPayload = {
+      ...basePaymentPayload,
+      payload: {
+        ...basePaymentPayload.payload,
+        voucher: {
+          ...baseVoucher,
+          expiry: baseVoucher.timestamp - 1000,
+        },
+      },
+    };
+
+    const result = verifyVoucherContinuity(
+      expiredPaymentPayload,
+      baseNewVoucherPaymentRequirements,
+    );
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_expired",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if voucher timestamp is in the future", () => {
+    const paymentPayload = {
+      ...basePaymentPayload,
+      payload: {
+        ...basePaymentPayload.payload,
+        voucher: {
+          ...baseVoucher,
+          timestamp: baseVoucher.timestamp + 3600,
+        },
+      },
+    };
+
+    const result = verifyVoucherContinuity(paymentPayload, baseNewVoucherPaymentRequirements);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_timestamp_too_early",
+      payer: buyerAddress,
+    });
+  });
+
+  describe("new voucher validation", () => {
+    it("should return error if new voucher has non-zero nonce", () => {
+      const paymentPayload = {
+        ...basePaymentPayload,
+        payload: {
+          ...basePaymentPayload.payload,
+          voucher: {
+            ...baseVoucher,
+            nonce: 1,
+          },
+        },
+      };
+      const result = verifyVoucherContinuity(paymentPayload, baseNewVoucherPaymentRequirements);
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_non_zero_nonce",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if new voucher has zero value aggregate", () => {
+      const paymentPayload = {
+        ...basePaymentPayload,
+        payload: {
+          ...basePaymentPayload.payload,
+          voucher: { ...baseVoucher, valueAggregate: "0" },
+        },
+      };
+      const result = verifyVoucherContinuity(paymentPayload, baseNewVoucherPaymentRequirements);
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_zero_value_aggregate",
+        payer: buyerAddress,
+      });
+    });
+  });
+
+  describe("aggregation voucher validation", () => {
+    it("should return error if voucher id doesn't match", () => {
+      const mismatchedIdVoucher = {
+        ...aggregatedVoucher,
+        id: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedIdVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_id_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if buyer doesn't match", () => {
+      const mismatchedBuyerVoucher = {
+        ...aggregatedVoucher,
+        buyer: "0x9999999999999999999999999999999999999999",
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedBuyerVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_buyer_mismatch",
+        payer: "0x9999999999999999999999999999999999999999",
+      });
+    });
+
+    it("should return error if seller doesn't match", () => {
+      const mismatchedSellerVoucher = {
+        ...aggregatedVoucher,
+        seller: "0x9999999999999999999999999999999999999999",
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedSellerVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_seller_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if value aggregate decreases", () => {
+      const decreasingValueVoucher = {
+        ...aggregatedVoucher,
+        valueAggregate: (BigInt(baseVoucher.valueAggregate) - BigInt(1)).toString(),
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: decreasingValueVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_value_aggregate_decreasing",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if asset doesn't match", () => {
+      const mismatchedAssetVoucher = {
+        ...aggregatedVoucher,
+        asset: "0x9999999999999999999999999999999999999999",
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedAssetVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_asset_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if timestamp decreases", () => {
+      const decreasingTimestampVoucher = {
+        ...aggregatedVoucher,
+        timestamp: baseVoucher.timestamp - 100, // Earlier than previous
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: decreasingTimestampVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_timestamp_decreasing",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if nonce is not incremented by 1", () => {
+      const wrongNonceVoucher = {
+        ...aggregatedVoucher,
+        nonce: 2, // Should be 1
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: wrongNonceVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_nonce_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if escrow doesn't match", () => {
+      const mismatchedEscrowVoucher = {
+        ...aggregatedVoucher,
+        escrow: "0x9999999999999999999999999999999999999999",
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedEscrowVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_escrow_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if chainId doesn't match", () => {
+      const mismatchedChainIdVoucher = {
+        ...aggregatedVoucher,
+        chainId: 1, // Different chain
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: mismatchedChainIdVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_chain_id_mismatch",
+        payer: buyerAddress,
+      });
+    });
+
+    it("should return error if expiry decreases", () => {
+      const decreasingExpiryVoucher = {
+        ...aggregatedVoucher,
+        expiry: baseVoucher.expiry - 1, // Earlier expiry
+      };
+
+      const paymentPayload = {
+        ...aggregatedPaymentPayload,
+        payload: {
+          ...aggregatedPaymentPayload.payload,
+          voucher: decreasingExpiryVoucher,
+        },
+      };
+
+      const result = verifyVoucherContinuity(
+        paymentPayload,
+        baseAggregationVoucherPaymentRequirements,
+      );
+
+      expect(result).toEqual({
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_voucher_expiry_decreasing",
+        payer: buyerAddress,
+      });
+    });
+  });
+});
+
+describe("verifyVoucherSignature", async () => {
+  const mockPaymentPayload = {
+    x402Version: 1,
+    scheme: DEFERRRED_SCHEME,
+    network: "base-sepolia",
+    payload: {
       voucher: {
         id: voucherId,
         buyer: buyerAddress,
@@ -299,39 +730,366 @@ describe("verifyVoucherSignature", () => {
       },
     },
   };
+  const { signature } = await signVoucher(buyer, mockPaymentPayload.payload.voucher);
+
+  it("should return isValid: true for valid voucher signature", async () => {
+    const result = await verifyVoucherSignature(mockPaymentPayload.payload.voucher, signature);
+    expect(result).toEqual({ isValid: true });
+  });
+
+  it("should return isValid: false for invalid voucher signature", async () => {
+    const result = await verifyVoucherSignature(
+      mockPaymentPayload.payload.voucher,
+      "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c",
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_signature",
+      payer: buyerAddress,
+    });
+  });
+});
+
+describe("verifyPreviousVoucherAvailability", () => {
+  const mockVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+  };
+
+  const mockSignedVoucher: DeferredEvmPayloadSignedVoucher = {
+    ...mockVoucher,
+    signature: voucherSignature,
+  };
+
+  let mockVoucherStore: VoucherStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockVoucherStore = {
+      getVoucher: vi.fn(),
+    } as unknown as VoucherStore;
   });
 
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  it("should return undefined for valid voucher signature", async () => {
-    vi.mocked(verifyVoucher).mockResolvedValue(true);
-    const result = await verifyVoucherSignature(
-      mockPaymentPayload.payload.voucher,
-      mockPaymentPayload.payload.signature,
-    );
-    expect(result).toEqual({ isValid: true });
-    expect(vi.mocked(verifyVoucher)).toHaveBeenCalledWith(
-      mockPaymentPayload.payload.voucher,
+  it("should return valid response when previous voucher is found and matches", async () => {
+    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(mockSignedVoucher);
+
+    const result = await verifyPreviousVoucherAvailability(
+      mockVoucher,
       voucherSignature,
-      buyerAddress,
+      mockVoucherStore,
     );
+
+    expect(result).toEqual({
+      isValid: true,
+    });
+
+    expect(mockVoucherStore.getVoucher).toHaveBeenCalledWith(voucherId, 0);
   });
 
-  it("should return error for invalid voucher signature", async () => {
-    vi.mocked(verifyVoucher).mockResolvedValue(false);
-    const result = await verifyVoucherSignature(
-      mockPaymentPayload.payload.voucher,
-      mockPaymentPayload.payload.signature,
+  it("should return error when previous voucher is not found in store", async () => {
+    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(null);
+
+    const result = await verifyPreviousVoucherAvailability(
+      mockVoucher,
+      voucherSignature,
+      mockVoucherStore,
     );
+
     expect(result).toEqual({
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_signature",
+      invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
       payer: buyerAddress,
+    });
+  });
+
+  it("should return error when previous voucher is found but doesn't match", async () => {
+    const mismatchedVoucher: DeferredEvmPayloadSignedVoucher = {
+      ...mockSignedVoucher,
+      valueAggregate: "500000", // Different value
+    };
+
+    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(mismatchedVoucher);
+
+    const result = await verifyPreviousVoucherAvailability(
+      mockVoucher,
+      voucherSignature,
+      mockVoucherStore,
+    );
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should handle voucher store errors", async () => {
+    vi.mocked(mockVoucherStore.getVoucher).mockRejectedValue(new Error("Store error"));
+
+    await expect(
+      verifyPreviousVoucherAvailability(mockVoucher, voucherSignature, mockVoucherStore),
+    ).rejects.toThrow("Store error");
+  });
+});
+
+describe("verifyVoucherDuplicate", () => {
+  const baseVoucher: DeferredEvmPayloadSignedVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+    signature: voucherSignature,
+  };
+
+  it("should return valid response for identical vouchers", () => {
+    const identicalVoucher = { ...baseVoucher };
+
+    const result = verifyVoucherDuplicate(baseVoucher, identicalVoucher);
+
+    expect(result).toEqual({
+      isValid: true,
+    });
+  });
+
+  it("should return error if voucher IDs don't match", () => {
+    const differentIdVoucher = {
+      ...baseVoucher,
+      id: "0x1111111111111111111111111111111111111111111111111111111111111111",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentIdVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if buyer addresses don't match", () => {
+    const differentBuyerVoucher = {
+      ...baseVoucher,
+      buyer: "0x9999999999999999999999999999999999999999",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentBuyerVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if seller addresses don't match", () => {
+    const differentSellerVoucher = {
+      ...baseVoucher,
+      seller: "0x9999999999999999999999999999999999999999",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentSellerVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if value aggregates don't match", () => {
+    const differentValueVoucher = {
+      ...baseVoucher,
+      valueAggregate: "2000000",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentValueVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if assets don't match", () => {
+    const differentAssetVoucher = {
+      ...baseVoucher,
+      asset: "0x2222222222222222222222222222222222222222",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentAssetVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if timestamps don't match", () => {
+    const differentTimestampVoucher = {
+      ...baseVoucher,
+      timestamp: 1715769700,
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentTimestampVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if nonces don't match", () => {
+    const differentNonceVoucher = {
+      ...baseVoucher,
+      nonce: 1,
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentNonceVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if escrow addresses don't match", () => {
+    const differentEscrowVoucher = {
+      ...baseVoucher,
+      escrow: "0x9999999999999999999999999999999999999999",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentEscrowVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if chain IDs don't match", () => {
+    const differentChainIdVoucher = {
+      ...baseVoucher,
+      chainId: 1,
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentChainIdVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if expiry times don't match", () => {
+    const differentExpiryVoucher = {
+      ...baseVoucher,
+      expiry: baseVoucher.expiry + 3600,
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentExpiryVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if signatures don't match", () => {
+    const differentSignatureVoucher = {
+      ...baseVoucher,
+      signature:
+        "0x79ce97f6d1242aa7b6f4826efb553ed453fd6c7132c665d95bc226d5f3027dd5456d61ed1bd8da5de6cea4d8154070ff458300b6b84e0c9010f434af77ad3d291c",
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, differentSignatureVoucher);
+
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should handle case-insensitive ID and signature comparison", () => {
+    const upperCaseIdVoucher = {
+      ...baseVoucher,
+      id: voucherId.toUpperCase(),
+      signature: voucherSignature.toUpperCase(),
+    };
+
+    const resultUpperCase = verifyVoucherDuplicate(baseVoucher, upperCaseIdVoucher);
+
+    expect(resultUpperCase).toEqual({
+      isValid: true,
+    });
+
+    const lowerCaseIdVoucher = {
+      ...baseVoucher,
+      id: voucherId.toLowerCase(),
+      signature: voucherSignature.toLowerCase(),
+    };
+
+    const resultLowerCase = verifyVoucherDuplicate(baseVoucher, lowerCaseIdVoucher);
+
+    expect(resultLowerCase).toEqual({
+      isValid: true,
+    });
+  });
+
+  it("should handle lower case address comparison", () => {
+    const mixedCaseVoucher = {
+      ...baseVoucher,
+      buyer: buyerAddress.toLowerCase(),
+      seller: sellerAddress.toLowerCase(),
+      asset: assetAddress.toLowerCase(),
+      escrow: escrowAddress.toLowerCase(),
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, mixedCaseVoucher);
+
+    expect(result).toEqual({
+      isValid: true,
+    });
+  });
+
+  it("should handle checksummed address comparison", () => {
+    const mixedCaseVoucher = {
+      ...baseVoucher,
+      escrow: getAddress(escrowAddress),
+      asset: getAddress(assetAddress),
+      buyer: getAddress(buyerAddress),
+      seller: getAddress(sellerAddress),
+    };
+
+    const result = verifyVoucherDuplicate(baseVoucher, mixedCaseVoucher);
+
+    expect(result).toEqual({
+      isValid: true,
     });
   });
 });
@@ -373,31 +1131,18 @@ describe("verifyOnchainState", () => {
     vi.resetAllMocks();
   });
 
-  it("should return undefined for valid onchain state", async () => {
+  it("should return valid if voucher is valid", async () => {
     vi.mocked(mockClient.readContract)
+      // outstanding amount
       .mockResolvedValueOnce([BigInt(1_000_000)])
+      // account balance
       .mockResolvedValueOnce({
         balance: BigInt(10_000_000),
         thawingAmount: BigInt(0),
         thawEndTime: BigInt(0),
       });
-
     const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
-    // verifyOnchainState returns { isValid: true } for valid state
     expect(result).toEqual({ isValid: true });
-  });
-
-  it("should return error if network is not supported", async () => {
-    // This test doesn't make sense for verifyOnchainState which doesn't call getNetworkId
-    // The network check is done in verifyPaymentRequirements
-    // Updating to test actual behavior
-    vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
-      payer: buyerAddress,
-    });
   });
 
   it("should return error if client network mismatch", async () => {
@@ -434,7 +1179,9 @@ describe("verifyOnchainState", () => {
 
   it("should return error if insufficient balance", async () => {
     vi.mocked(mockClient.readContract)
+      // outstanding amount
       .mockResolvedValueOnce([BigInt(1_000_000)])
+      // account balance
       .mockResolvedValueOnce({
         balance: BigInt(100_000),
         thawingAmount: BigInt(0),

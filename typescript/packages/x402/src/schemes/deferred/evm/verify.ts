@@ -143,7 +143,7 @@ export function verifyVoucherContinuity(
         payer: paymentPayload.payload.voucher.buyer,
       };
     }
-    if (BigInt(voucher.valueAggregate) == 0n) {
+    if (BigInt(voucher.valueAggregate) === 0n) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_zero_value_aggregate",
@@ -180,7 +180,7 @@ export function verifyVoucherContinuity(
       };
     }
     // valueAggregate
-    if (voucher.valueAggregate < previousVoucher.valueAggregate) {
+    if (BigInt(voucher.valueAggregate) < BigInt(previousVoucher.valueAggregate)) {
       return {
         isValid: false,
         invalidReason: "invalid_deferred_evm_payload_voucher_value_aggregate_decreasing",
@@ -332,7 +332,7 @@ export function verifyVoucherDuplicate(
     getAddress(newVoucher.escrow) === getAddress(previousVoucher.escrow) &&
     newVoucher.chainId === previousVoucher.chainId &&
     newVoucher.expiry === previousVoucher.expiry &&
-    newVoucher.signature === previousVoucher.signature
+    newVoucher.signature.toLowerCase() === previousVoucher.signature.toLowerCase()
   ) {
     return {
       isValid: true,
@@ -424,6 +424,7 @@ export async function verifyOnchainState<
       payer: voucher.buyer,
     };
   }
+
   if (buyerAccount.balance < voucherOutstandingAmount) {
     return {
       isValid: false,
