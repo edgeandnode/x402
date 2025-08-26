@@ -65,6 +65,7 @@ export const UnsignedPaymentPayloadSchema = z.discriminatedUnion("scheme", [
 ]);
 export type UnsignedPaymentPayload = z.infer<typeof UnsignedPaymentPayloadSchema>;
 
+<<<<<<< HEAD
 // x402 Resource Server Response
 export const x402ResponseSchema = z.object({
   x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
@@ -137,6 +138,14 @@ export const VerifyRequestSchema = z.object({
   paymentRequirements: PaymentRequirementsSchema,
 });
 export type VerifyRequest = z.infer<typeof VerifyRequestSchema>;
+=======
+// x402Request
+export const X402RequestSchema = z.object({
+  paymentRequirements: PaymentRequirementsSchema,
+  paymentPayload: PaymentPayloadSchema,
+});
+export type X402Request = z.infer<typeof X402RequestSchema>;
+>>>>>>> d96a8bb (chore: lint code)
 
 // x402VerifyResponse
 export const VerifyResponseSchema = z.object({
