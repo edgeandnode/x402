@@ -25,7 +25,7 @@ const buyer = createSigner(
 );
 const buyerAddress = buyer.account.address;
 const sellerAddress = "0x1234567890123456789012345678901234567890";
-const escrowAddress = "0xffffff12345678901234567890123456789fffff";
+const escrowAddress = "0xffFfFf12345678901234567890123456789fffFF";
 const assetAddress = "0x1111111111111111111111111111111111111111";
 const voucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
 
