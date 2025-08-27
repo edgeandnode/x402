@@ -241,7 +241,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     payload: PaymentPayload,
     paymentRequirements: PaymentRequirements,
   ): Promise<VerifyResponse | DeferredVoucherResponse> {
-    const response = await fetch(`${facilitator.url}/deferred/verify-and-store`, {
+    const response = await fetch(`${facilitator.url}/deferred/vouchers/verify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

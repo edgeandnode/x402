@@ -777,7 +777,7 @@ describe("useDeferredFacilitator", () => {
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${DEFAULT_FACILITATOR_URL}/deferred/verify-and-store`,
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/verify`,
         {
           method: "POST",
           headers: {
