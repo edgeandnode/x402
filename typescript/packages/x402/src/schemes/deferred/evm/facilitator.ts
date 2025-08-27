@@ -174,6 +174,17 @@ export async function settleVoucher<transport extends Transport, chain extends C
     };
   }
 
+  // Verify the voucher exists in the store
+  const storeVoucher = await voucherStore.getVoucher(voucher.id, voucher.nonce);
+  if (!storeVoucher) {
+    return {
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_voucher_voucher_not_found",
+      transaction: "",
+      payer: voucher.buyer,
+    };
+  }
+
   // Verify the onchain state allows the payment to be settled
   const valid = await verifyOnchainState(wallet, voucher);
   if (!valid.isValid) {

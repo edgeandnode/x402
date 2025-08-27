@@ -303,6 +303,7 @@ describe("facilitator - settle", () => {
 
     // Mock successful voucher store settlement
     vi.mocked(mockVoucherStore.settleVoucher).mockResolvedValue({ success: true });
+    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(mockVoucher);
 
     // Create a proper mock wallet with all required properties
     mockWallet = {
@@ -394,6 +395,7 @@ describe("facilitator - settleVoucher", () => {
 
     mockVoucherStore = {
       settleVoucher: vi.fn().mockResolvedValue({ success: true }),
+      getVoucher: vi.fn().mockResolvedValue(mockVoucher),
     } as unknown as VoucherStore;
 
     // Mock successful verification by default
@@ -446,6 +448,18 @@ describe("facilitator - settleVoucher", () => {
       "0x1234567890abcdef",
       0n, // mocked amount in log
     );
+  });
+
+  it("should return error when voucher not found in store", async () => {
+    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(null);
+    const result = await settleVoucher(mockWallet, mockVoucher, voucherSignature, mockVoucherStore);
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_voucher_voucher_not_found",
+      transaction: "",
+      payer: buyerAddress,
+    });
   });
 
   it("should return error when voucher signature verification fails", async () => {
