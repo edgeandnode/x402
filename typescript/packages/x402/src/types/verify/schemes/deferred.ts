@@ -42,6 +42,7 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_voucher_not_duplicate",
   "invalid_deferred_evm_payload_voucher_could_not_settle_store",
   "invalid_deferred_evm_payload_voucher_error_settling_store",
+  "invalid_deferred_evm_payload_voucher_voucher_not_found",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
