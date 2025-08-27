@@ -654,7 +654,7 @@ describe("useDeferredFacilitator", () => {
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${DEFAULT_FACILITATOR_URL}/deferred/verify-and-store`,
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/verify`,
         {
           method: "POST",
           headers: {
@@ -808,7 +808,7 @@ describe("useDeferredFacilitator", () => {
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${customFacilitatorUrl}/deferred/verify-and-store`,
+        `${customFacilitatorUrl}/deferred/vouchers/verify`,
         expect.any(Object),
       );
     });
