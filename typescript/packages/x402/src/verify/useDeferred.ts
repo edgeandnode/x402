@@ -1,21 +1,23 @@
+import { toJsonSafe } from "../shared/json";
 import {
   DeferredErrorResponse,
   DeferredEvmPayloadSignedVoucher,
   DeferredVoucherResponse,
   DeferredVouchersResponse,
   FacilitatorConfig,
+  PaymentPayload,
+  PaymentRequirements,
   SettleResponse,
   VerifyResponse,
 } from "../types";
-import { DEFAULT_FACILITATOR_URL } from "./useFacilitator";
 
 /**
- * Creates a facilitator client for interacting with the X402 payment facilitator service
+ * Creates a facilitator client for interacting with the X402 payment deferred facilitator service
  *
- * @param facilitator - The facilitator config to use. If not provided, the default facilitator will be used.
- * @returns An object containing verify and settle functions for interacting with the facilitator
+ * @param facilitator - The facilitator config to use.
+ * @returns An object containing functions for interacting with a deferred facilitator
  */
-export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
+export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
   /**
    * Fetches a voucher by its id and nonce.
    *
@@ -24,9 +26,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
    * @returns The voucher
    */
   async function getVoucher(id: string, nonce: number): Promise<DeferredVoucherResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
-
-    const response = await fetch(`${url}/deferred/vouchers/${id}/${nonce}`);
+    const response = await fetch(`${facilitator.url}/deferred/vouchers/${id}/${nonce}`);
     const responseJson = (await response.json()) as DeferredVoucherResponse;
 
     if (response.status !== 200 || "error" in responseJson) {
@@ -54,7 +54,6 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
       offset?: number;
     },
   ): Promise<DeferredVouchersResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
     const { limit, offset } = pagination;
 
     const params = new URLSearchParams();
@@ -63,7 +62,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     const queryString = params.toString();
 
     const response = await fetch(
-      `${url}/deferred/vouchers/${id}${queryString ? `?${queryString}` : ""}`,
+      `${facilitator.url}/deferred/vouchers/${id}${queryString ? `?${queryString}` : ""}`,
     );
     const responseJson = (await response.json()) as DeferredVouchersResponse;
 
@@ -99,7 +98,6 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
       offset?: number;
     },
   ): Promise<DeferredVouchersResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
     const { buyer, seller, latest } = query;
     const { limit, offset } = pagination;
 
@@ -111,7 +109,9 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     if (seller !== undefined) params.append("seller", seller);
     const queryString = params.toString();
 
-    const response = await fetch(`${url}/deferred/vouchers${queryString ? `?${queryString}` : ""}`);
+    const response = await fetch(
+      `${facilitator.url}/deferred/vouchers${queryString ? `?${queryString}` : ""}`,
+    );
     const responseJson = (await response.json()) as DeferredVouchersResponse;
 
     if (response.status !== 200 || "error" in responseJson) {
@@ -134,9 +134,9 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     buyer: string,
     seller: string,
   ): Promise<DeferredVoucherResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
-
-    const response = await fetch(`${url}/deferred/vouchers/available/${buyer}/${seller}`);
+    const response = await fetch(
+      `${facilitator.url}/deferred/vouchers/available/${buyer}/${seller}`,
+    );
     const responseJson = (await response.json()) as DeferredVoucherResponse;
 
     // If the voucher is not found we don't throw, clients should just create a new voucher from scratch
@@ -165,9 +165,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
   async function storeVoucher(
     voucher: DeferredEvmPayloadSignedVoucher,
   ): Promise<DeferredVoucherResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
-
-    const response = await fetch(`${url}/deferred/vouchers`, {
+    const response = await fetch(`${facilitator.url}/deferred/vouchers`, {
       method: "POST",
       body: JSON.stringify(voucher),
       headers: {
@@ -194,9 +192,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
    * @returns The verification result
    */
   async function verifyVoucher(id: string, nonce: number): Promise<VerifyResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
-
-    const response = await fetch(`${url}/deferred/vouchers/${id}/${nonce}/verify`, {
+    const response = await fetch(`${facilitator.url}/deferred/vouchers/${id}/${nonce}/verify`, {
       method: "POST",
     });
     const responseJson = await response.json();
@@ -217,9 +213,7 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
    * @returns The settlement result
    */
   async function settleVoucher(id: string, nonce: number): Promise<SettleResponse> {
-    const url = facilitator?.url || DEFAULT_FACILITATOR_URL;
-
-    const response = await fetch(`${url}/deferred/vouchers/${id}/${nonce}/settle`, {
+    const response = await fetch(`${facilitator.url}/deferred/vouchers/${id}/${nonce}/settle`, {
       method: "POST",
     });
     const responseJson = await response.json();
@@ -232,6 +226,46 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     return responseJson as SettleResponse;
   }
 
+  /**
+   * Verifies a voucher and stores it if it is valid
+   *
+   * This is the equivalent of calling the following in sequence:
+   * 1. POST /verify (facilitator verify)
+   * 2. POST /deferred/vouchers (store voucher)
+   *
+   * @param payload - The payment payload
+   * @param paymentRequirements - The payment requirements
+   * @returns The voucher response
+   */
+  async function verifyAndStoreVoucher(
+    payload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<VerifyResponse | DeferredVoucherResponse> {
+    const response = await fetch(`${facilitator.url}/deferred/verify-and-store`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        x402Version: payload.x402Version,
+        paymentPayload: toJsonSafe(payload),
+        paymentRequirements: toJsonSafe(paymentRequirements),
+      }),
+    });
+
+    const responseJson = (await response.json()) as VerifyResponse | DeferredVoucherResponse;
+
+    if (response.status !== 201 || "error" in responseJson || "invalidReason" in responseJson) {
+      const errorMessage =
+        (responseJson as DeferredErrorResponse).error ||
+        (responseJson as VerifyResponse).invalidReason ||
+        `Failed to verify and store voucher: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    return responseJson as VerifyResponse | DeferredVoucherResponse;
+  }
+
   return {
     getVoucher,
     getVouchers,
@@ -240,5 +274,6 @@ export function useDeferredFacilitator(facilitator?: FacilitatorConfig) {
     storeVoucher,
     verifyVoucher,
     settleVoucher,
+    verifyAndStoreVoucher,
   };
 }

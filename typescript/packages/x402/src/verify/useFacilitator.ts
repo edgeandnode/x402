@@ -170,7 +170,13 @@ export function useFacilitator(facilitator?: FacilitatorConfig) {
     return data as ListDiscoveryResourcesResponse;
   }
 
-  return { verify, settle, supported, list, deferred: useDeferredFacilitator(facilitator) };
+  return {
+    verify,
+    settle,
+    supported,
+    list,
+    deferred: useDeferredFacilitator(facilitator || { url: DEFAULT_FACILITATOR_URL }),
+  };
 }
 
 export const { verify, settle, supported, list, deferred } = useFacilitator();
