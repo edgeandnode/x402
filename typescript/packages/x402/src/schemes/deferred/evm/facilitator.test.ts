@@ -12,7 +12,7 @@ vi.mock("./verify", () => ({
   verifyPaymentRequirements: vi.fn(),
   verifyVoucherContinuity: vi.fn(),
   verifyVoucherSignature: vi.fn(),
-  verifyPreviousVoucherAvailability: vi.fn(),
+  verifyVoucherAvailability: vi.fn(),
   verifyOnchainState: vi.fn(),
 }));
 
@@ -109,7 +109,7 @@ describe("facilitator - verify", () => {
     vi.mocked(verifyModule.verifyPaymentRequirements).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyPreviousVoucherAvailability).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
   });
 
@@ -205,9 +205,11 @@ describe("facilitator - verify", () => {
 
     await verify(mockClient, mockPaymentPayload, aggregationRequirements, mockSchemeContext);
 
-    expect(verifyModule.verifyPreviousVoucherAvailability).toHaveBeenCalledWith(
+    expect(verifyModule.verifyVoucherAvailability).toHaveBeenCalledWith(
       mockVoucher,
       voucherSignature,
+      mockVoucher.id,
+      mockVoucher.nonce, // mockVoucher is the previous voucher
       mockVoucherStore,
     );
   });
@@ -215,7 +217,7 @@ describe("facilitator - verify", () => {
   it("should skip previous voucher verification for new voucher type", async () => {
     await verify(mockClient, mockPaymentPayload, mockPaymentRequirements, mockSchemeContext);
 
-    expect(verifyModule.verifyPreviousVoucherAvailability).not.toHaveBeenCalled();
+    expect(verifyModule.verifyVoucherAvailability).not.toHaveBeenCalled();
   });
 
   it("should return invalid response when onchain state verification fails", async () => {
@@ -300,6 +302,7 @@ describe("facilitator - settle", () => {
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
     // Mock successful voucher store settlement
     vi.mocked(mockVoucherStore.settleVoucher).mockResolvedValue({ success: true });
@@ -401,6 +404,7 @@ describe("facilitator - settleVoucher", () => {
     // Mock successful verification by default
     vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
     // Mock successful voucher store settlement
     vi.mocked(mockVoucherStore.settleVoucher).mockResolvedValue({ success: true });
@@ -451,12 +455,23 @@ describe("facilitator - settleVoucher", () => {
   });
 
   it("should return error when voucher not found in store", async () => {
-    vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(null);
+    vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_found",
+    });
+
     const result = await settleVoucher(mockWallet, mockVoucher, voucherSignature, mockVoucherStore);
 
+    expect(verifyModule.verifyVoucherAvailability).toHaveBeenCalledWith(
+      mockVoucher,
+      voucherSignature,
+      mockVoucher.id,
+      mockVoucher.nonce,
+      mockVoucherStore,
+    );
     expect(result).toEqual({
       success: false,
-      errorReason: "invalid_deferred_evm_payload_voucher_voucher_not_found",
+      errorReason: "invalid_deferred_evm_payload_voucher_not_found",
       transaction: "",
       payer: buyerAddress,
     });

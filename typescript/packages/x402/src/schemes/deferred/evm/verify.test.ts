@@ -11,7 +11,7 @@ import {
   verifyVoucherSignature,
   verifyOnchainState,
   verifyVoucherContinuity,
-  verifyPreviousVoucherAvailability,
+  verifyVoucherAvailability,
   verifyVoucherDuplicate,
 } from "./verify";
 import { ConnectedClient, createSigner } from "../../../types/shared/evm/wallet";
@@ -750,7 +750,7 @@ describe("verifyVoucherSignature", async () => {
   });
 });
 
-describe("verifyPreviousVoucherAvailability", () => {
+describe("verifyVoucherAvailability", () => {
   const mockVoucher = {
     id: voucherId,
     buyer: buyerAddress,
@@ -785,9 +785,11 @@ describe("verifyPreviousVoucherAvailability", () => {
   it("should return valid response when previous voucher is found and matches", async () => {
     vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(mockSignedVoucher);
 
-    const result = await verifyPreviousVoucherAvailability(
+    const result = await verifyVoucherAvailability(
       mockVoucher,
       voucherSignature,
+      mockVoucher.id,
+      mockVoucher.nonce,
       mockVoucherStore,
     );
 
@@ -801,15 +803,17 @@ describe("verifyPreviousVoucherAvailability", () => {
   it("should return error when previous voucher is not found in store", async () => {
     vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(null);
 
-    const result = await verifyPreviousVoucherAvailability(
+    const result = await verifyVoucherAvailability(
       mockVoucher,
       voucherSignature,
+      mockVoucher.id,
+      mockVoucher.nonce,
       mockVoucherStore,
     );
 
     expect(result).toEqual({
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_found",
       payer: buyerAddress,
     });
   });
@@ -822,15 +826,17 @@ describe("verifyPreviousVoucherAvailability", () => {
 
     vi.mocked(mockVoucherStore.getVoucher).mockResolvedValue(mismatchedVoucher);
 
-    const result = await verifyPreviousVoucherAvailability(
+    const result = await verifyVoucherAvailability(
       mockVoucher,
       voucherSignature,
+      mockVoucher.id,
+      mockVoucher.nonce,
       mockVoucherStore,
     );
 
     expect(result).toEqual({
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_voucher_not_duplicate",
+      invalidReason: "invalid_deferred_evm_payload_voucher_found_not_duplicate",
       payer: buyerAddress,
     });
   });
@@ -839,7 +845,13 @@ describe("verifyPreviousVoucherAvailability", () => {
     vi.mocked(mockVoucherStore.getVoucher).mockRejectedValue(new Error("Store error"));
 
     await expect(
-      verifyPreviousVoucherAvailability(mockVoucher, voucherSignature, mockVoucherStore),
+      verifyVoucherAvailability(
+        mockVoucher,
+        voucherSignature,
+        mockVoucher.id,
+        mockVoucher.nonce,
+        mockVoucherStore,
+      ),
     ).rejects.toThrow("Store error");
   });
 });

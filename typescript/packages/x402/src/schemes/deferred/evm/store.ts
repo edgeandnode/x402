@@ -143,7 +143,6 @@ export abstract class VoucherStore {
    * Store a new voucher in the system
    *
    * @param voucher - The signed voucher to store
-   * @param signature - The cryptographic signature
    * @returns Result indicating success/failure
    *
    * @example
@@ -158,7 +157,6 @@ export abstract class VoucherStore {
    */
   abstract storeVoucher(
     voucher: DeferredEvmPayloadSignedVoucher,
-    signature: string,
   ): Promise<VoucherStoreActionResult>;
 
   /**

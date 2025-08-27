@@ -19,7 +19,7 @@ import {
   verifyVoucherSignature,
   verifyOnchainState,
   verifyVoucherContinuity,
-  verifyPreviousVoucherAvailability,
+  verifyVoucherAvailability,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -76,9 +76,11 @@ export async function verify<
 
   // Verify previous voucher availability
   if (paymentRequirements.extra.type === "aggregation") {
-    const previousVoucherResult = await verifyPreviousVoucherAvailability(
+    const previousVoucherResult = await verifyVoucherAvailability(
       paymentRequirements.extra.voucher,
       paymentRequirements.extra.signature,
+      paymentRequirements.extra.voucher.id,
+      paymentRequirements.extra.voucher.nonce,
       voucherStore,
     );
     if (!previousVoucherResult.isValid) {
@@ -122,8 +124,8 @@ export async function settle<transport extends Transport, chain extends Chain>(
   const { voucherStore } = DeferredSchemeContextSchema.parse(schemeContext.deferred);
 
   // re-verify to ensure the payment is still valid
+  // TODO: there is some verification duplication as some of the verification steps are repeated later when calling settleVoucher
   const valid = await verify(wallet, paymentPayload, paymentRequirements, schemeContext);
-
   if (!valid.isValid) {
     return {
       success: false,
@@ -175,11 +177,17 @@ export async function settleVoucher<transport extends Transport, chain extends C
   }
 
   // Verify the voucher exists in the store
-  const storeVoucher = await voucherStore.getVoucher(voucher.id, voucher.nonce);
-  if (!storeVoucher) {
+  const storeResult = await verifyVoucherAvailability(
+    voucher,
+    signature,
+    voucher.id,
+    voucher.nonce,
+    voucherStore,
+  );
+  if (!storeResult.isValid) {
     return {
       success: false,
-      errorReason: "invalid_deferred_evm_payload_voucher_voucher_not_found",
+      errorReason: storeResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
       transaction: "",
       payer: voucher.buyer,
     };

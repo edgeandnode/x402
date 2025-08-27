@@ -275,23 +275,30 @@ export async function verifyVoucherSignature(
 }
 
 /**
- * Verifies the previous voucher is available in the voucher store
+ * Verifies a voucher is available in the voucher store
+ *
+ * This function will retrieve voucher (id,nonce) and verify it
+ * against the voucher provided.
  *
  * @param voucher - The voucher to verify
  * @param signature - The signature of the voucher
+ * @param id - The id of the voucher
+ * @param nonce - The nonce of the voucher
  * @param voucherStore - The voucher store to use for verification
  * @returns Verification result
  */
-export async function verifyPreviousVoucherAvailability(
+export async function verifyVoucherAvailability(
   voucher: DeferredEvmPayloadVoucher,
   signature: string,
+  id: string,
+  nonce: number,
   voucherStore: VoucherStore,
 ): Promise<VerifyResponse> {
-  const storeVoucher = await voucherStore.getVoucher(voucher.id, voucher.nonce);
+  const storeVoucher = await voucherStore.getVoucher(id, nonce);
   if (!storeVoucher) {
     return {
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_previous_voucher_not_found",
+      invalidReason: "invalid_deferred_evm_payload_voucher_not_found",
       payer: voucher.buyer,
     };
   }
@@ -302,7 +309,11 @@ export async function verifyPreviousVoucherAvailability(
 
   const duplicateResult = verifyVoucherDuplicate(signedVoucher, storeVoucher);
   if (!duplicateResult.isValid) {
-    return duplicateResult;
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_voucher_found_not_duplicate",
+      payer: voucher.buyer,
+    };
   }
 
   return {
