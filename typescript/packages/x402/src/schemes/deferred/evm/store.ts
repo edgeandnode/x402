@@ -182,18 +182,24 @@ export abstract class VoucherStore {
   /**
    * Get the collections for a voucher
    *
-   * @param id - The voucher id
-   * @param nonce - The voucher nonce
+   * @param query - The voucher id and nonce
+   * @param pagination - Pagination options
    * @returns The collections for the voucher
    *
    * @example
    * ```typescript
    * // Get the collections for a voucher
-   * const collections = await store.getVoucherCollections("0x123...", 5);
+   * const collections = await store.getVoucherCollections({ id: "0x123...", nonce: 5 }, { limit: 10, offset: 0 });
    * ```
    */
   abstract getVoucherCollections(
-    id: string,
-    nonce: number,
+    query: {
+      id?: string;
+      nonce?: number;
+    },
+    pagination: {
+      limit?: number;
+      offset?: number;
+    },
   ): Promise<Array<DeferredVoucherCollection>>;
 }

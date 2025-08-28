@@ -58,6 +58,7 @@ describe("useDeferredFacilitator", () => {
       expect(facilitator).toHaveProperty("storeVoucher");
       expect(facilitator).toHaveProperty("verifyVoucher");
       expect(facilitator).toHaveProperty("settleVoucher");
+      expect(facilitator).toHaveProperty("getVoucherCollections");
     });
 
     it("should use default facilitator URL when no config provided", async () => {
@@ -726,6 +727,191 @@ describe("useDeferredFacilitator", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         `${customFacilitatorUrl}/deferred/vouchers`,
         expect.any(Object),
+      );
+    });
+  });
+
+  describe("getVoucherCollections", () => {
+    it("should fetch voucher collections without query or pagination", async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: voucherId,
+            nonce: 0,
+            transaction: "0xabcdef1234567890",
+            timestamp: 1715769600,
+          },
+        ],
+        count: 1,
+        pagination: { limit: 10, offset: 0 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.getVoucherCollections({}, {});
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/collections`,
+      );
+    });
+
+    it("should fetch voucher collections with id and nonce query", async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: voucherId,
+            nonce: 2,
+            transaction: "0xabcdef1234567890",
+            timestamp: 1715769600,
+          },
+        ],
+        count: 1,
+        pagination: { limit: 10, offset: 0 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.getVoucherCollections({ id: voucherId, nonce: 2 }, {});
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/collections?id=${voucherId}&nonce=2`,
+      );
+    });
+
+    it("should fetch voucher collections with pagination", async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: voucherId,
+            nonce: 0,
+            transaction: "0xabcdef1234567890",
+            timestamp: 1715769600,
+          },
+        ],
+        count: 1,
+        pagination: { limit: 20, offset: 10 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.getVoucherCollections({}, { limit: 20, offset: 10 });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/collections?limit=20&offset=10`,
+      );
+    });
+
+    it("should fetch voucher collections with all parameters", async () => {
+      const mockResponse = {
+        data: [
+          {
+            id: voucherId,
+            nonce: 3,
+            transaction: "0xabcdef1234567890",
+            timestamp: 1715769600,
+          },
+        ],
+        count: 1,
+        pagination: { limit: 50, offset: 25 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.getVoucherCollections(
+        { id: voucherId, nonce: 3 },
+        { limit: 50, offset: 25 },
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/collections?limit=50&offset=25&id=${voucherId}&nonce=3`,
+      );
+    });
+
+    it("should throw error for non-200 status", async () => {
+      const mockErrorResponse: DeferredErrorResponse = {
+        error: "Collections not found",
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 404,
+        statusText: "Not Found",
+        json: () => Promise.resolve(mockErrorResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(facilitator.getVoucherCollections({}, {})).rejects.toThrow(
+        "Collections not found",
+      );
+    });
+
+    it("should throw error when response contains error field", async () => {
+      const mockErrorResponse: DeferredErrorResponse = {
+        error: "Database error",
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockErrorResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(facilitator.getVoucherCollections({}, {})).rejects.toThrow("Database error");
+    });
+
+    it("should use fallback error message when no error field", async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 500,
+        statusText: "Internal Server Error",
+        json: () => Promise.resolve({}),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(facilitator.getVoucherCollections({}, {})).rejects.toThrow(
+        "Failed to fetch voucher collections: Internal Server Error",
+      );
+    });
+
+    it("should use custom facilitator URL", async () => {
+      const mockResponse = {
+        data: [],
+        count: 0,
+        pagination: { limit: 10, offset: 0 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: customFacilitatorUrl });
+      const result = await facilitator.getVoucherCollections({}, {});
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${customFacilitatorUrl}/deferred/vouchers/collections`,
       );
     });
   });

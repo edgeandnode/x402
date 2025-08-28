@@ -177,3 +177,19 @@ export const DeferredVoucherCollectionResponseSchema = z.object({
 export type DeferredVoucherCollectionResponse = z.infer<
   typeof DeferredVoucherCollectionResponseSchema
 >;
+
+// x402DeferredVoucherCollectionsResponse
+export const DeferredVoucherCollectionsResponseSchema = z.union([
+  z.object({
+    data: z.array(DeferredVoucherCollectionSchema),
+    count: z.number(),
+    pagination: z.object({
+      limit: z.number(),
+      offset: z.number(),
+    }),
+  }),
+  DeferredErrorResponseSchema,
+]);
+export type DeferredVoucherCollectionsResponse = z.infer<
+  typeof DeferredVoucherCollectionsResponseSchema
+>;

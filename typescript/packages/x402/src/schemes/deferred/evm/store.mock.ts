@@ -197,17 +197,34 @@ export class InMemoryVoucherStore extends VoucherStore {
   /**
    * Get the voucher collections for a given voucher id and nonce
    *
-   * @param id - The id of the voucher
-   * @param nonce - The nonce of the voucher
+   * @param query - The query options
+   * @param query.id - The id of the voucher
+   * @param query.nonce - The nonce of the voucher
+   * @param pagination - The pagination options
+   * @param pagination.limit - The maximum number of collections to return
+   * @param pagination.offset - The offset of the first collection to return
    * @returns The voucher collections
    */
   async getVoucherCollections(
-    id: string,
-    nonce: number,
+    query: {
+      id?: string | undefined;
+      nonce?: number | undefined;
+    },
+    pagination: {
+      limit?: number | undefined;
+      offset?: number | undefined;
+    },
   ): Promise<Array<DeferredVoucherCollection>> {
-    return this.collections.filter(
-      collection => collection.voucherId === id && collection.voucherNonce === nonce,
-    );
+    const { limit = 100, offset = 0 } = pagination;
+    const { id, nonce } = query;
+
+    return this.collections
+      .filter(collection => {
+        if (id && collection.voucherId !== id) return false;
+        if (nonce && collection.voucherNonce !== nonce) return false;
+        return true;
+      })
+      .slice(offset, offset + limit);
   }
 }
 

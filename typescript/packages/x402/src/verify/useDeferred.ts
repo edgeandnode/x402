@@ -1,6 +1,7 @@
 import { toJsonSafe } from "../shared/json";
 import {
   DeferredErrorResponse,
+  DeferredVoucherCollectionsResponse,
   DeferredVoucherResponse,
   DeferredVouchersResponse,
   FacilitatorConfig,
@@ -75,7 +76,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
   }
 
   /**
-   * Fetches the latest voucher for a given buyer and seller
+   * Fetches vouchers for a given buyer and seller
    *
    * @param query - The query parameters
    * @param query.buyer - The buyer address
@@ -234,6 +235,51 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     return responseJson as SettleResponse;
   }
 
+  /**
+   * Fetches the latest voucher for a given buyer and seller
+   *
+   * @param query - The query parameters
+   * @param query.id - The id of the voucher
+   * @param query.nonce - The nonce of the voucher
+   * @param pagination - The pagination parameters
+   * @param pagination.limit - The maximum number of vouchers to return
+   * @param pagination.offset - The offset to start from
+   * @returns The vouchers
+   */
+  async function getVoucherCollections(
+    query: {
+      id?: string;
+      nonce?: number;
+    },
+    pagination: {
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<DeferredVoucherCollectionsResponse> {
+    const { id, nonce } = query;
+    const { limit, offset } = pagination;
+
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append("limit", limit.toString());
+    if (offset !== undefined) params.append("offset", offset.toString());
+    if (id !== undefined) params.append("id", id);
+    if (nonce !== undefined) params.append("nonce", nonce.toString());
+    const queryString = params.toString();
+
+    const response = await fetch(
+      `${facilitator.url}/deferred/vouchers/collections${queryString ? `?${queryString}` : ""}`,
+    );
+    const responseJson = (await response.json()) as DeferredVoucherCollectionsResponse;
+
+    if (response.status !== 200 || "error" in responseJson) {
+      const errorMessage =
+        (responseJson as DeferredErrorResponse).error ||
+        `Failed to fetch voucher collections: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+    return responseJson;
+  }
+
   return {
     getVoucher,
     getVouchers,
@@ -242,5 +288,6 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     storeVoucher,
     verifyVoucher,
     settleVoucher,
+    getVoucherCollections,
   };
 }
