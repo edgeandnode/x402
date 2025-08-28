@@ -221,7 +221,7 @@ export class InMemoryVoucherStore extends VoucherStore {
     return this.collections
       .filter(collection => {
         if (id && collection.voucherId !== id) return false;
-        if (nonce && collection.voucherNonce !== nonce) return false;
+        if (nonce !== undefined && collection.voucherNonce !== nonce) return false;
         return true;
       })
       .slice(offset, offset + limit);
