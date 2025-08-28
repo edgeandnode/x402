@@ -416,75 +416,6 @@ describe("useDeferredFacilitator", () => {
     });
   });
 
-  describe("storeVoucher", () => {
-    it("should store voucher successfully", async () => {
-      const mockResponse: DeferredVoucherResponse = mockSignedVoucher;
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: () => Promise.resolve(mockResponse),
-      });
-
-      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-      const result = await facilitator.storeVoucher(mockSignedVoucher);
-
-      expect(result).toEqual(mockResponse);
-      expect(mockFetch).toHaveBeenCalledWith(`${DEFAULT_FACILITATOR_URL}/deferred/vouchers`, {
-        method: "POST",
-        body: JSON.stringify(mockResponse),
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-    });
-
-    it("should throw error for non-201 status", async () => {
-      const mockErrorResponse: DeferredErrorResponse = {
-        error: "Voucher invalid",
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        status: 400,
-        statusText: "Bad Request",
-        json: () => Promise.resolve(mockErrorResponse),
-      });
-
-      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-
-      await expect(facilitator.storeVoucher(mockSignedVoucher)).rejects.toThrow("Voucher invalid");
-    });
-
-    it("should throw error when response contains error field", async () => {
-      const mockErrorResponse: DeferredErrorResponse = {
-        error: "Internal server error",
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        status: 201,
-        json: () => Promise.resolve(mockErrorResponse),
-      });
-
-      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-
-      await expect(facilitator.storeVoucher(mockSignedVoucher)).rejects.toThrow(
-        "Internal server error",
-      );
-    });
-
-    it("should use fallback error message", async () => {
-      mockFetch.mockResolvedValueOnce({
-        status: 500,
-        statusText: "Internal Server Error",
-        json: () => Promise.resolve({}),
-      });
-
-      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-
-      await expect(facilitator.storeVoucher(mockSignedVoucher)).rejects.toThrow(
-        "Failed to store voucher: Internal Server Error",
-      );
-    });
-  });
-
   describe("verifyVoucher", () => {
     it("should verify voucher successfully", async () => {
       const mockResponse = { isValid: true, payer: buyerAddress };
@@ -597,7 +528,7 @@ describe("useDeferredFacilitator", () => {
     });
   });
 
-  describe("verifyAndStoreVoucher", () => {
+  describe("storeVoucher", () => {
     const mockPaymentPayload = {
       x402Version: 1,
       scheme: "deferred",
@@ -647,26 +578,20 @@ describe("useDeferredFacilitator", () => {
       });
 
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-      const result = await facilitator.verifyAndStoreVoucher(
-        mockPaymentPayload,
-        mockPaymentRequirements,
-      );
+      const result = await facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements);
 
       expect(result).toEqual(mockResponse);
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/verify`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            x402Version: mockPaymentPayload.x402Version,
-            paymentPayload: mockPaymentPayload,
-            paymentRequirements: mockPaymentRequirements,
-          }),
+      expect(mockFetch).toHaveBeenCalledWith(`${DEFAULT_FACILITATOR_URL}/deferred/vouchers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          x402Version: mockPaymentPayload.x402Version,
+          paymentPayload: mockPaymentPayload,
+          paymentRequirements: mockPaymentRequirements,
+        }),
+      });
     });
 
     it("should throw error for non-201 status", async () => {
@@ -683,7 +608,7 @@ describe("useDeferredFacilitator", () => {
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
 
       await expect(
-        facilitator.verifyAndStoreVoucher(mockPaymentPayload, mockPaymentRequirements),
+        facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements),
       ).rejects.toThrow("Verification failed");
     });
 
@@ -700,7 +625,7 @@ describe("useDeferredFacilitator", () => {
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
 
       await expect(
-        facilitator.verifyAndStoreVoucher(mockPaymentPayload, mockPaymentRequirements),
+        facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements),
       ).rejects.toThrow("Invalid voucher signature");
     });
 
@@ -719,7 +644,7 @@ describe("useDeferredFacilitator", () => {
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
 
       await expect(
-        facilitator.verifyAndStoreVoucher(mockPaymentPayload, mockPaymentRequirements),
+        facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements),
       ).rejects.toThrow("invalid_deferred_evm_payload_signature");
     });
 
@@ -733,7 +658,7 @@ describe("useDeferredFacilitator", () => {
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
 
       await expect(
-        facilitator.verifyAndStoreVoucher(mockPaymentPayload, mockPaymentRequirements),
+        facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements),
       ).rejects.toThrow("Failed to verify and store voucher: Internal Server Error");
     });
 
@@ -770,26 +695,20 @@ describe("useDeferredFacilitator", () => {
       });
 
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-      const result = await facilitator.verifyAndStoreVoucher(
-        mockPaymentPayload,
-        aggregationRequirements,
-      );
+      const result = await facilitator.storeVoucher(mockPaymentPayload, aggregationRequirements);
 
       expect(result).toEqual(mockResponse);
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${DEFAULT_FACILITATOR_URL}/deferred/vouchers/verify`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            x402Version: mockPaymentPayload.x402Version,
-            paymentPayload: mockPaymentPayload,
-            paymentRequirements: aggregationRequirements,
-          }),
+      expect(mockFetch).toHaveBeenCalledWith(`${DEFAULT_FACILITATOR_URL}/deferred/vouchers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          x402Version: mockPaymentPayload.x402Version,
+          paymentPayload: mockPaymentPayload,
+          paymentRequirements: aggregationRequirements,
+        }),
+      });
     });
 
     it("should use custom facilitator URL", async () => {
@@ -801,14 +720,11 @@ describe("useDeferredFacilitator", () => {
       });
 
       const facilitator = useDeferredFacilitator({ url: customFacilitatorUrl });
-      const result = await facilitator.verifyAndStoreVoucher(
-        mockPaymentPayload,
-        mockPaymentRequirements,
-      );
+      const result = await facilitator.storeVoucher(mockPaymentPayload, mockPaymentRequirements);
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${customFacilitatorUrl}/deferred/vouchers/verify`,
+        `${customFacilitatorUrl}/deferred/vouchers`,
         expect.any(Object),
       );
     });

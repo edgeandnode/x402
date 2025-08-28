@@ -1,7 +1,6 @@
 import { toJsonSafe } from "../shared/json";
 import {
   DeferredErrorResponse,
-  DeferredEvmPayloadSignedVoucher,
   DeferredVoucherResponse,
   DeferredVouchersResponse,
   FacilitatorConfig,
@@ -157,31 +156,40 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
   }
 
   /**
-   * Stores a voucher in the facilitator
+   * Stores a voucher in the facilitator. Before storing, it verifies the payload and payment
+   * requirements, equivalent to calling POST /verify
    *
-   * @param voucher - The signedvoucher to store
-   * @returns The result of the store operation
+   * @param payload - The payment payload
+   * @param paymentRequirements - The payment requirements
+   * @returns The voucher response
    */
   async function storeVoucher(
-    voucher: DeferredEvmPayloadSignedVoucher,
-  ): Promise<DeferredVoucherResponse> {
+    payload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<VerifyResponse | DeferredVoucherResponse> {
     const response = await fetch(`${facilitator.url}/deferred/vouchers`, {
       method: "POST",
-      body: JSON.stringify(voucher),
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        x402Version: payload.x402Version,
+        paymentPayload: toJsonSafe(payload),
+        paymentRequirements: toJsonSafe(paymentRequirements),
+      }),
     });
-    const responseJson = (await response.json()) as DeferredVoucherResponse;
 
-    if (response.status !== 201 || "error" in responseJson) {
+    const responseJson = (await response.json()) as VerifyResponse | DeferredVoucherResponse;
+
+    if (response.status !== 201 || "error" in responseJson || "invalidReason" in responseJson) {
       const errorMessage =
         (responseJson as DeferredErrorResponse).error ||
-        `Failed to store voucher: ${response.statusText}`;
+        (responseJson as VerifyResponse).invalidReason ||
+        `Failed to verify and store voucher: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
-    return responseJson as DeferredVoucherResponse;
+    return responseJson as VerifyResponse | DeferredVoucherResponse;
   }
 
   /**
@@ -226,46 +234,6 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     return responseJson as SettleResponse;
   }
 
-  /**
-   * Verifies a voucher and stores it if it is valid
-   *
-   * This is the equivalent of calling the following in sequence:
-   * 1. POST /verify (facilitator verify)
-   * 2. POST /deferred/vouchers (store voucher)
-   *
-   * @param payload - The payment payload
-   * @param paymentRequirements - The payment requirements
-   * @returns The voucher response
-   */
-  async function verifyAndStoreVoucher(
-    payload: PaymentPayload,
-    paymentRequirements: PaymentRequirements,
-  ): Promise<VerifyResponse | DeferredVoucherResponse> {
-    const response = await fetch(`${facilitator.url}/deferred/vouchers/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        x402Version: payload.x402Version,
-        paymentPayload: toJsonSafe(payload),
-        paymentRequirements: toJsonSafe(paymentRequirements),
-      }),
-    });
-
-    const responseJson = (await response.json()) as VerifyResponse | DeferredVoucherResponse;
-
-    if (response.status !== 201 || "error" in responseJson || "invalidReason" in responseJson) {
-      const errorMessage =
-        (responseJson as DeferredErrorResponse).error ||
-        (responseJson as VerifyResponse).invalidReason ||
-        `Failed to verify and store voucher: ${response.statusText}`;
-      throw new Error(errorMessage);
-    }
-
-    return responseJson as VerifyResponse | DeferredVoucherResponse;
-  }
-
   return {
     getVoucher,
     getVouchers,
@@ -274,6 +242,5 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     storeVoucher,
     verifyVoucher,
     settleVoucher,
-    verifyAndStoreVoucher,
   };
 }
