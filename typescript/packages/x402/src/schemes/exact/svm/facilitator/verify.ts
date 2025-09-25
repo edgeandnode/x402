@@ -4,7 +4,6 @@ import {
   PaymentRequirements,
   ExactSvmPayload,
   ErrorReasons,
-  EXACT_SCHEME,
 } from "../../../../types/verify";
 import { SupportedSVMNetworks } from "../../../../types/shared";
 import {
@@ -49,6 +48,7 @@ import {
   getRpcClient,
   signAndSimulateTransaction,
 } from "../../../../shared/svm";
+import { EXACT_SCHEME } from "../../../../types/verify/schemes";
 
 /**
  * Verify the payment payload against the payment requirements.

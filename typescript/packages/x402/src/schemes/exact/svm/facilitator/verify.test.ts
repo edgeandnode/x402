@@ -17,7 +17,7 @@ import {
   fetchEncodedAccounts,
 } from "@solana/kit";
 import { PaymentPayload, PaymentRequirements, ExactSvmPayload } from "../../../../types/verify";
-import { EXACT_SCHEME, Network } from "../../../../types";
+import { Network } from "../../../../types";
 import * as SvmShared from "../../../../shared/svm";
 import {
   TOKEN_PROGRAM_ADDRESS,
@@ -38,6 +38,7 @@ import {
   parseSetComputeUnitLimitInstruction,
   parseSetComputeUnitPriceInstruction,
 } from "@solana-program/compute-budget";
+import { EXACT_SCHEME } from "../../../../types/verify/schemes";
 
 vi.mock("@solana/kit", async () => {
   const actual = await vi.importActual("@solana/kit");
@@ -482,6 +483,7 @@ describe("verify", () => {
     });
 
     it("should return isValid: false if simulation fails", async () => {
+      console.log("SCHEME", EXACT_SCHEME);
       vi.mocked(SvmShared.signAndSimulateTransaction).mockResolvedValue({
         value: { err: "simulation_error" },
       } as any);

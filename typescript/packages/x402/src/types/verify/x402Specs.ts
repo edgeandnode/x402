@@ -17,7 +17,7 @@ import {
   UnsignedDeferredPaymentPayloadSchema,
 } from "./schemes/deferred";
 import { x402Versions } from "./versions";
-import { EvmOrSvmAddress } from "..";
+import { EvmOrSvmAddress } from "./schemes/base";
 
 // Enums
 export const X402_SCHEMES = [EXACT_SCHEME, DEFERRRED_SCHEME] as const;

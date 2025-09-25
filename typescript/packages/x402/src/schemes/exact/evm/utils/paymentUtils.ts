@@ -1,5 +1,10 @@
 import { safeBase64Encode, safeBase64Decode } from "../../../../shared";
-import { SupportedEVMNetworks, SupportedSVMNetworks } from "../../../../types";
+import {
+  ExactEvmPayloadSchema,
+  ExactSvmPayloadSchema,
+  SupportedEVMNetworks,
+  SupportedSVMNetworks,
+} from "../../../../types";
 import {
   PaymentPayload,
   ExactEvmPayload,
@@ -16,11 +21,11 @@ import {
  */
 export function encodePayment(payment: PaymentPayload): string {
   let safe: ExactPaymentPayload;
-  const exactPayment = ExactPaymentPayloadSchema.parse(payment);
 
   // evm
-  if (SupportedEVMNetworks.includes(exactPayment.network)) {
-    const evmPayload = exactPayment.payload as ExactEvmPayload;
+  if (SupportedEVMNetworks.includes(payment.network)) {
+    const exactPayment = ExactPaymentPayloadSchema.parse(payment);
+    const evmPayload = ExactEvmPayloadSchema.parse(exactPayment.payload);
     safe = {
       ...exactPayment,
       payload: {
@@ -37,8 +42,10 @@ export function encodePayment(payment: PaymentPayload): string {
   }
 
   // svm
-  if (SupportedSVMNetworks.includes(exactPayment.network)) {
-    safe = { ...exactPayment, payload: exactPayment.payload as ExactSvmPayload };
+  if (SupportedSVMNetworks.includes(payment.network)) {
+    const exactPayment = ExactPaymentPayloadSchema.parse(payment);
+    const svmPayload = ExactSvmPayloadSchema.parse(exactPayment.payload);
+    safe = { ...exactPayment, payload: svmPayload };
     return safeBase64Encode(JSON.stringify(safe));
   }
 

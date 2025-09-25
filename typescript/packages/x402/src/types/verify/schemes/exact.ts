@@ -4,6 +4,7 @@ import {
   EvmSignatureRegex,
   HexEncoded64ByteRegex,
   EvmMaxAtomicUnits,
+  SvmAddressRegex,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
 import { Base64EncodedRegex } from "../../../shared";
@@ -92,7 +93,7 @@ export const ExactPaymentRequirementsSchema = BasePaymentRequirementsSchema.exte
     .object({
       name: z.string().optional(),
       version: z.string().optional(),
-      feePayer: z.string().regex(EvmAddressRegex).optional(),
+      feePayer: z.string().regex(SvmAddressRegex).optional(),
     })
     .optional(),
 });
