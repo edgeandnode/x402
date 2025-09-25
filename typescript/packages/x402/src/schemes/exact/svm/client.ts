@@ -199,7 +199,7 @@ async function createAtaInstructionOrUndefined(
   if (!feePayer) {
     throw new Error(
       "feePayer is required in paymentRequirements.extra in order to set the " +
-      "facilitator as the fee payer for the create associated token account instruction",
+        "facilitator as the fee payer for the create associated token account instruction",
     );
   }
 

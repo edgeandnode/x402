@@ -20,11 +20,6 @@ import {
   PaymentRequirementsSchema,
   Wallet,
 } from "x402/types";
-import {
-  createPaymentHeader,
-  PaymentRequirementsSelector,
-  selectPaymentRequirements,
-} from "x402/client";
 
 /**
  * Enables the payment of APIs using the x402 payment protocol.
@@ -87,7 +82,11 @@ export function withPaymentInterceptor(
               ? (["solana", "solana-devnet"] as Network[])
               : undefined;
 
-        const selectedPaymentRequirements = paymentRequirementsSelector(parsed, network, EXACT_SCHEME);
+        const selectedPaymentRequirements = paymentRequirementsSelector(
+          parsed,
+          network,
+          EXACT_SCHEME,
+        );
         const paymentHeader = await createPaymentHeader(
           walletClient,
           x402Version,
@@ -182,11 +181,15 @@ export function withDeferredPaymentInterceptor(
         };
         const parsed = accepts.map(x => PaymentRequirementsSchema.parse(x));
 
-        const chainId = evm.isSignerWallet(walletClient) ? walletClient.chain?.id : undefined;
+        const network = isMultiNetworkSigner(walletClient)
+          ? undefined
+          : evm.isSignerWallet(walletClient as typeof evm.EvmSigner)
+            ? ChainIdToNetwork[(walletClient as typeof evm.EvmSigner).chain?.id]
+            : undefined;
 
         const selectedPaymentRequirements = paymentRequirementsSelector(
           parsed,
-          chainId ? ChainIdToNetwork[chainId] : undefined,
+          network,
           DEFERRRED_SCHEME,
         );
         const selectedDeferredPaymentRequirements = DeferredPaymentRequirementsSchema.parse(

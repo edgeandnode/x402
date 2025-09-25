@@ -1,6 +1,6 @@
 import { getUsdcChainConfigForChain } from "../shared/evm";
 import { getNetworkId } from "../shared/network";
-import { EXACT_SCHEME, Network, PaymentRequirements } from "../types";
+import { Network, PaymentRequirements, type X402_SCHEMES } from "../types";
 
 /**
  * Default selector for payment requirements.
@@ -15,7 +15,7 @@ import { EXACT_SCHEME, Network, PaymentRequirements } from "../types";
 export function selectPaymentRequirements(
   paymentRequirements: Array<PaymentRequirements>,
   network?: Network | Network[],
-  scheme?: typeof EXACT_SCHEME,
+  scheme?: X402_SCHEMES,
 ): PaymentRequirements {
   // Sort `base` payment requirements to the front of the list. This is to ensure that base is preferred if available.
   paymentRequirements.sort((a, b) => {
@@ -67,4 +67,4 @@ export function selectPaymentRequirements(
  * @param scheme - The scheme to check against. If not provided, the scheme will not be checked.
  * @returns The payment requirement that is the most appropriate for the user.
  */
-export type PaymentRequirementsSelector = (paymentRequirements: Array<PaymentRequirements>, network?: Network | Network[], scheme?: typeof EXACT_SCHEME) => PaymentRequirements;
+export type PaymentRequirementsSelector = (paymentRequirements: Array<PaymentRequirements>, network?: Network | Network[], scheme?: X402_SCHEMES) => PaymentRequirements;
