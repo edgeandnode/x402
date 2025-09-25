@@ -128,8 +128,11 @@ describe("Deferred Payment Integration Tests", () => {
       expect(settleResponse.success).toBe(true);
 
       const voucherCollections = await voucherStore.getVoucherCollections(
-        decodedPaymentPayload.payload.voucher.id,
-        decodedPaymentPayload.payload.voucher.nonce,
+        {
+          id: decodedPaymentPayload.payload.voucher.id,
+          nonce: decodedPaymentPayload.payload.voucher.nonce,
+        },
+        {},
       );
       expect(voucherCollections.length).toBe(1);
       expect(voucherCollections[0]).toEqual({
@@ -222,8 +225,11 @@ describe("Deferred Payment Integration Tests", () => {
       expect(settleResponse.success).toBe(true);
 
       const voucherCollections = await voucherStore.getVoucherCollections(
-        decodedPaymentPayload.payload.voucher.id,
-        decodedPaymentPayload.payload.voucher.nonce,
+        {
+          id: decodedPaymentPayload.payload.voucher.id,
+          nonce: decodedPaymentPayload.payload.voucher.nonce,
+        },
+        {},
       );
       expect(voucherCollections.length).toBe(1);
       expect(voucherCollections[0]).toEqual({
@@ -332,8 +338,11 @@ describe("Deferred Payment Integration Tests", () => {
       expect(settleResponse.success).toBe(true);
 
       const voucherCollections = await voucherStore.getVoucherCollections(
-        decodedPaymentPayload.payload.voucher.id,
-        decodedPaymentPayload.payload.voucher.nonce,
+        {
+          id: decodedPaymentPayload.payload.voucher.id,
+          nonce: decodedPaymentPayload.payload.voucher.nonce,
+        },
+        {},
       );
       expect(voucherCollections.length).toBe(1);
       expect(voucherCollections[0]).toEqual({

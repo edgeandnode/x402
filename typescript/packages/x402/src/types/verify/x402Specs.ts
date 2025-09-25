@@ -20,7 +20,8 @@ import { x402Versions } from "./versions";
 import { EvmOrSvmAddress } from "..";
 
 // Enums
-export const schemes = [EXACT_SCHEME, DEFERRRED_SCHEME] as const;
+export const X402_SCHEMES = [EXACT_SCHEME, DEFERRRED_SCHEME] as const;
+export type X402_SCHEMES = (typeof X402_SCHEMES)[number];
 export const ErrorReasons = [
   "insufficient_funds",
   "invalid_network",
@@ -65,7 +66,6 @@ export const UnsignedPaymentPayloadSchema = z.discriminatedUnion("scheme", [
 ]);
 export type UnsignedPaymentPayload = z.infer<typeof UnsignedPaymentPayloadSchema>;
 
-<<<<<<< HEAD
 // x402 Resource Server Response
 export const x402ResponseSchema = z.object({
   x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
@@ -138,14 +138,12 @@ export const VerifyRequestSchema = z.object({
   paymentRequirements: PaymentRequirementsSchema,
 });
 export type VerifyRequest = z.infer<typeof VerifyRequestSchema>;
-=======
 // x402Request
 export const X402RequestSchema = z.object({
   paymentRequirements: PaymentRequirementsSchema,
   paymentPayload: PaymentPayloadSchema,
 });
 export type X402Request = z.infer<typeof X402RequestSchema>;
->>>>>>> d96a8bb (chore: lint code)
 
 // x402VerifyResponse
 export const VerifyResponseSchema = z.object({
@@ -188,7 +186,7 @@ export type ListDiscoveryResourcesResponse = z.infer<typeof ListDiscoveryResourc
 // x402SupportedPaymentKind
 export const SupportedPaymentKindSchema = z.object({
   x402Version: z.number().refine(val => x402Versions.includes(val as 1)),
-  scheme: z.enum(schemes),
+  scheme: z.enum(X402_SCHEMES),
   network: NetworkSchema,
   extra: z.record(z.any()).optional(),
 });

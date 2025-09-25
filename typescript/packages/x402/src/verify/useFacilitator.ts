@@ -20,6 +20,7 @@ export type CreateHeaders = () => Promise<{
   settle: Record<string, string>;
   supported: Record<string, string>;
   list?: Record<string, string>;
+  deferred?: Record<string, string>;
 }>;
 
 /**

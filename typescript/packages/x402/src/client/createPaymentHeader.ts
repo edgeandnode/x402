@@ -56,7 +56,13 @@ export async function createPaymentHeader(
     paymentRequirements.scheme === DEFERRRED_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
-    return await createPaymentHeaderDeferredEVM(client, x402Version, paymentRequirements);
+    const evmClient = isMultiNetworkSigner(client) ? client.evm : client;
+
+    if (!isEvmSignerWallet(evmClient)) {
+      throw new Error("Invalid evm wallet client provided");
+    }
+
+    return await createPaymentHeaderDeferredEVM(evmClient, x402Version, paymentRequirements);
   }
 
   throw new Error("Unsupported scheme");

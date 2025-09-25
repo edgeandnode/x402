@@ -32,7 +32,7 @@ export async function signPaymentHeader(
       throw new Error("Invalid evm wallet client provided");
     }
     unsignedPaymentHeader = UnsignedExactPaymentPayloadSchema.parse(unsignedPaymentHeader);
-    const signedPaymentHeader = await signPaymentHeaderExactEVM(client, paymentRequirements, unsignedPaymentHeader);
+    const signedPaymentHeader = await signPaymentHeaderExactEVM(evmClient, paymentRequirements, unsignedPaymentHeader);
     return encodePaymentExactEVM(signedPaymentHeader);
   }
 
@@ -40,8 +40,14 @@ export async function signPaymentHeader(
     paymentRequirements.scheme === DEFERRRED_SCHEME &&
     SupportedEVMNetworks.includes(paymentRequirements.network)
   ) {
+    const evmClient = isMultiNetworkSigner(client) ? client.evm : client;
+
+    if (!isEvmSignerWallet(evmClient)) {
+      throw new Error("Invalid evm wallet client provided");
+    }
+
     unsignedPaymentHeader = UnsignedDeferredPaymentPayloadSchema.parse(unsignedPaymentHeader);
-    const signedPaymentHeader = await signPaymentHeaderDeferredEVM(client, unsignedPaymentHeader);
+    const signedPaymentHeader = await signPaymentHeaderDeferredEVM(evmClient, unsignedPaymentHeader);
     return encodePaymentDeferredEVM(signedPaymentHeader);
   }
 

@@ -17,8 +17,7 @@ import {
   fetchEncodedAccounts,
 } from "@solana/kit";
 import { PaymentPayload, PaymentRequirements, ExactSvmPayload } from "../../../../types/verify";
-import { Network } from "../../../../types";
-import { SCHEME } from "../../";
+import { EXACT_SCHEME, Network } from "../../../../types";
 import * as SvmShared from "../../../../shared/svm";
 import {
   TOKEN_PROGRAM_ADDRESS,
@@ -98,7 +97,7 @@ const devnetUSDCAddress = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 describe("verify", () => {
   describe("verifySchemesAndNetworks", () => {
     const validPayload: PaymentPayload = {
-      scheme: SCHEME,
+      scheme: EXACT_SCHEME,
       network: "solana-devnet",
       x402Version: 1,
       payload: {
@@ -107,7 +106,7 @@ describe("verify", () => {
     };
 
     const validRequirements: PaymentRequirements = {
-      scheme: SCHEME,
+      scheme: EXACT_SCHEME,
       network: "solana-devnet",
       payTo: "someAddress",
       maxAmountRequired: "1000",
@@ -273,7 +272,7 @@ describe("verify", () => {
         },
       };
       mockPaymentRequirements = {
-        scheme: SCHEME,
+        scheme: EXACT_SCHEME,
         network: "solana-devnet",
         payTo: "payToAddress",
         maxAmountRequired: "1000",
@@ -369,13 +368,13 @@ describe("verify", () => {
 
       mockSigner = {} as any;
       mockPayload = {
-        scheme: SCHEME,
+        scheme: EXACT_SCHEME,
         network: "solana-devnet",
         x402Version: 1,
         payload: { transaction: "..." } as ExactSvmPayload,
       };
       mockRequirements = {
-        scheme: SCHEME,
+        scheme: EXACT_SCHEME,
         network: "solana-devnet",
         payTo: "payToAddress",
         maxAmountRequired: "1000",
@@ -446,7 +445,7 @@ describe("verify", () => {
     });
 
     it("should return isValid: false if schemes or networks are invalid", async () => {
-      const invalidPayload = { ...mockPayload, scheme: "invalid" as "exact" };
+      const invalidPayload = { ...mockPayload, scheme: "invalid" } as unknown as PaymentPayload;
       const result = await verify(mockSigner, invalidPayload, mockRequirements);
       expect(result.isValid).toBe(false);
       expect(result.invalidReason).toBe("unsupported_scheme");
@@ -504,7 +503,7 @@ describe("verify", () => {
       vi.clearAllMocks();
 
       mockPaymentRequirements = {
-        scheme: SCHEME,
+        scheme: EXACT_SCHEME,
         network: "solana-devnet",
         payTo: "payToAddress",
         maxAmountRequired: "1000",

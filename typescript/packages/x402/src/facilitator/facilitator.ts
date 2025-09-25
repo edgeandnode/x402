@@ -69,7 +69,12 @@ export async function verify<
           payer: payload.payload.voucher.buyer,
         };
       }
-      const valid = await verifyDeferred(client, payload, paymentRequirements, schemeContext);
+      const valid = await verifyDeferred(
+        client as EvmConnectedClient<transport, chain, account>,
+        payload,
+        paymentRequirements,
+        schemeContext,
+      );
       return valid;
     } else {
       return {
@@ -135,7 +140,12 @@ export async function settle<transport extends Transport, chain extends Chain>(
           payer: payload.payload.voucher.buyer,
         };
       }
-      return settleDeferred(client, payload, paymentRequirements, schemeContext);
+      return settleDeferred(
+        client as EvmSignerWallet<chain, transport>,
+        payload,
+        paymentRequirements,
+        schemeContext,
+      );
     } else {
       return {
         success: false,

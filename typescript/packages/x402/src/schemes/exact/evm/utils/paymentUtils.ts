@@ -15,13 +15,14 @@ import {
  * @returns A base64 encoded string representation of the payment payload
  */
 export function encodePayment(payment: PaymentPayload): string {
-  let safe: PaymentPayload;
+  let safe: ExactPaymentPayload;
+  const exactPayment = ExactPaymentPayloadSchema.parse(payment);
 
   // evm
-  if (SupportedEVMNetworks.includes(payment.network)) {
-    const evmPayload = payment.payload as ExactEvmPayload;
+  if (SupportedEVMNetworks.includes(exactPayment.network)) {
+    const evmPayload = exactPayment.payload as ExactEvmPayload;
     safe = {
-      ...payment,
+      ...exactPayment,
       payload: {
         ...evmPayload,
         authorization: Object.fromEntries(
@@ -36,8 +37,8 @@ export function encodePayment(payment: PaymentPayload): string {
   }
 
   // svm
-  if (SupportedSVMNetworks.includes(payment.network)) {
-    safe = { ...payment, payload: payment.payload as ExactSvmPayload };
+  if (SupportedSVMNetworks.includes(exactPayment.network)) {
+    safe = { ...exactPayment, payload: exactPayment.payload as ExactSvmPayload };
     return safeBase64Encode(JSON.stringify(safe));
   }
 

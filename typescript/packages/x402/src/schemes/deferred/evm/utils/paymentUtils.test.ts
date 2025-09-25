@@ -220,7 +220,7 @@ describe("paymentUtils", () => {
       };
 
       const encoded = encodePayment(differentSigPayload);
-      const decoded = decodePayment(encoded);
+      const decoded = decodePayment(encoded) as DeferredPaymentPayload;
 
       expect(decoded.payload.signature).toBe("0x" + "0".repeat(130));
       expect(decoded).toEqual(differentSigPayload);

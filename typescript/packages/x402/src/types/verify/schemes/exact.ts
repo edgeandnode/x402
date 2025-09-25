@@ -92,6 +92,7 @@ export const ExactPaymentRequirementsSchema = BasePaymentRequirementsSchema.exte
     .object({
       name: z.string().optional(),
       version: z.string().optional(),
+      feePayer: z.string().regex(EvmAddressRegex).optional(),
     })
     .optional(),
 });

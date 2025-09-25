@@ -14,7 +14,11 @@ import {
   TransactionSigner,
   Instruction,
 } from "@solana/kit";
-import { PaymentPayload, PaymentRequirements } from "../../../types/verify";
+import {
+  ExactPaymentRequirementsSchema,
+  PaymentPayload,
+  PaymentRequirements,
+} from "../../../types/verify";
 import {
   fetchMint,
   findAssociatedTokenPda,
@@ -92,7 +96,8 @@ async function createTransferTransactionMessage(
   const transferInstructions = await createAtaAndTransferInstructions(client, paymentRequirements);
 
   // create tx to simulate
-  const feePayer = paymentRequirements.extra?.feePayer as Address;
+  const { extra } = ExactPaymentRequirementsSchema.parse(paymentRequirements);
+  const feePayer = extra?.feePayer as Address;
   const txToSimulate = pipe(
     createTransactionMessage({ version: 0 }),
     tx => setTransactionMessageComputeUnitPrice(1, tx), // 1 microlamport priority fee
@@ -186,14 +191,15 @@ async function createAtaInstructionOrUndefined(
   paymentRequirements: PaymentRequirements,
   tokenProgramAddress: Address,
 ): Promise<Instruction | undefined> {
-  const { asset, payTo, extra, network } = paymentRequirements;
+  const { asset, payTo, extra, network } =
+    ExactPaymentRequirementsSchema.parse(paymentRequirements);
   const feePayer = extra?.feePayer as Address;
 
   // feePayer is required
   if (!feePayer) {
     throw new Error(
       "feePayer is required in paymentRequirements.extra in order to set the " +
-        "facilitator as the fee payer for the create associated token account instruction",
+      "facilitator as the fee payer for the create associated token account instruction",
     );
   }
 
@@ -211,7 +217,7 @@ async function createAtaInstructionOrUndefined(
   // if the ATA does not exist, return an instruction to create it
   if (!maybeAccount.exists) {
     return getCreateAssociatedTokenInstruction({
-      payer: paymentRequirements.extra?.feePayer as TransactionSigner<string>,
+      payer: extra?.feePayer as unknown as TransactionSigner<string>,
       ata: destinationATAAddress,
       owner: payTo as Address,
       mint: asset as Address,
