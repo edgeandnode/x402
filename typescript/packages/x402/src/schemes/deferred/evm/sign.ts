@@ -1,12 +1,14 @@
-import { Address, Chain, getAddress, Hex, LocalAccount, Transport, verifyTypedData } from "viem";
+import { Address, Chain, getAddress, Hex, LocalAccount, Transport } from "viem";
 import {
   typedDataTypes,
   isAccount,
   isSignerWallet,
   SignerWallet,
   deferredVoucherPrimaryType,
+  createConnectedClient,
 } from "../../../types/shared/evm";
 import { DeferredEvmPayloadVoucher } from "../../../types/verify/schemes/deferred";
+import { getNetworkName } from "../../../shared";
 
 /**
  * Signs a voucher
@@ -84,8 +86,8 @@ export async function verifyVoucher(
     message: voucher,
   };
 
-  // TODO: use client.verifyTypedData to support smart accounts
-  return await verifyTypedData({
+  const client = createConnectedClient(getNetworkName(voucher.chainId));
+  return await client.verifyTypedData({
     address: signer,
     ...voucherTypedData,
     signature: signature as Hex,
