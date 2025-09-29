@@ -74,6 +74,7 @@ Full `X-PAYMENT` header:
 ## `paymentRequirements` extra object
 
 The `extra` object in the "Payment Required Response" should contain the following fields:
+- A `type` field to indicate wether it's a new voucher or an aggregation
 - If this is a new voucher being created:
   - `voucher`: A simplified voucher object with:
     - `id`: The voucher id
@@ -81,7 +82,6 @@ The `extra` object in the "Payment Required Response" should contain the followi
 - If an existing voucher is being aggregated:
   - `signature`: The signature of the latest voucher corresponding to the given `id`
   - `voucher`: The latest voucher corresponding to the given `id`
-- Additionally a `type` field to indicate wether it's a new voucher or an aggregation
 
 Example:
 
