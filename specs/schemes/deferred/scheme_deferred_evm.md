@@ -2,7 +2,7 @@
 
 ## Summary
 
-The `deferred` scheme on EVM chains uses `EIP-712` signed vouchers to represent payment commitments from a buyer to a seller. Before issuing vouchers, the buyer deposits funds—denominated in a specific `ERC-20` token—into an on-chain escrow earmarked for the seller. Each voucher authorizes a   payment against that escrow balance, and explicitly specifies the asset being used.
+The `deferred` scheme on EVM chains uses `EIP-712` signed vouchers to represent payment commitments from a buyer to a seller. Before issuing vouchers, the buyer deposits funds—denominated in a specific `ERC-20` token—into an on-chain escrow earmarked for the seller. Each voucher authorizes a payment against that escrow balance, and explicitly specifies the asset being used.
 Sellers can collect and aggregate these signed messages over time, choosing when to redeem them on-chain and settling the total amount in a single transaction.
 This design enables efficient, asset-flexible micropayments without incurring prohibitive gas costs for every interaction.
 
@@ -120,9 +120,7 @@ Example:
 
 ## Verification
 
-### Facilitator Verification
-
-The facilitator performs comprehensive verification when receiving a deferred payment:
+The following steps are required to verify a deferred payment:
 
 1. **Signature validation**: Verify the EIP-712 signature is valid
 2. **Payment requirements matching**:
@@ -147,28 +145,56 @@ The facilitator performs comprehensive verification when receiving a deferred pa
 7. **Transaction simulation** (optional but recommended):
     - Simulate the voucher collection to ensure the transaction would succeed on-chain
 
-### Smart Contract Verification
-
-When vouchers are collected on-chain, the escrow smart contract verifies:
-
-1. Signature validity for the EIP-712 typed data
-2. `chainId` matches the network chain id
-3. `buyer` balance of `asset` is sufficient to cover `valueAggregate` in voucher
-4. The `id` has not been used, or if it has, that the new balance is greater than what was already paid (paying only the difference)
-
-### Seller Verification
-
-Sellers trust the facilitator's verification and do not perform additional checks when receiving vouchers.
-
-### Buyer Verification
-
-When aggregating a voucher, buyers should:
-
-1. Verify the signature is valid
-2. Verify the `seller`, `asset` and `chainId` in the previous voucher match the payment requirements
-
 ## Settlement
 
-Settlement is performed via the facilitator calling the `collect` function on the `deferred` escrow contract with the `payload.signature` and `payload.voucher` parameters from the `X-PAYMENT` header.
+Settlement is performed via the facilitator calling the `collect` function on the escrow contract with the `payload.signature` and `payload.voucher` parameters from the `X-PAYMENT` header. This can be initiated by buyer's request or the facilitator holding the vouchers could trigger automatic settlement based on pre-agreed conditions.
 
 Multiple vouchers may be collected in a single transaction, using the `collectMany` function.
+
+## Appendix
+
+### `X-Payment-Buyer` header
+
+The `X-PAYMENT-BUYER` header allows buyers to notify sellers about their identity before signing any voucher or message. This enables sellers to determine whether to request a new voucher or check their voucher store for existing vouchers for further aggregation. It's important to note this header requires no proof of identity, the seller assumes the buyer is who it claims to be. This is not a problem however since the payment flow will later require valid signatures which an impostor wont be able to forge.
+
+The header contains the buyer's EVM address as a simple string:
+
+```
+X-PAYMENT-BUYER: 0x209693Bc6afc0C5328bA36FaF03C514EF312287C
+```
+
+The buyer needs to add this header when initially requesting access to a resource. Failing to provide the header will result in new vouchers being created on each interaction, defeating the purpose of the `deferred` scheme.
+
+Example 402 response with an existing voucher:
+```json
+{
+  "x402Version": 1,
+  "accepts": [{
+    "scheme": "deferred",
+    "network": "base-sepolia",
+    "maxAmountRequired": "1000000",
+    "payTo": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+    "extra": {
+      "type": "aggregation",
+      "signature": "0x3a2f7e3b...",
+      "voucher": {
+        "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+        "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+        "valueAggregate": "5000000",
+        "nonce": 2,
+        // ... other voucher fields
+      }
+    }
+  }]
+}
+```
+
+### Voucher store specification
+
+Facilitators supporting the `deferred` scheme should offer a persistent voucher store for sellers. For a complete specification see [Voucher Store specification](./voucher_store.md).
+
+### Escrow contract specification
+
+The full specification for the deferred escrow contract can be found here: [DeferredPaymentEscrow specification](./scheme_deferred_evm_escrow_contract.md)
