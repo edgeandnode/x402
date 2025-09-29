@@ -228,31 +228,3 @@ Retrieves settlement history for a voucher.
   }
 }
 ```
-
-## Error Responses
-
-All endpoints return standard HTTP status codes:
-
-- **200 OK**: Successful operation
-- **201 Created**: Resource created successfully
-- **400 Bad Request**: Invalid request parameters or voucher data
-- **401 Unauthorized**: Authentication required or failed
-- **403 Forbidden**: Operation not permitted for authenticated user
-- **404 Not Found**: Resource not found
-- **500 Internal Server Error**: Facilitator error
-
-Error responses include a JSON body:
-```json
-{
-  "error": "Human-readable error message",
-  "code": "ERROR_CODE"
-}
-```
-
-## Implementation Notes
-
-1. **Voucher Storage**: Facilitators MUST implement persistent storage following the [Voucher Store Specification](./voucher_store.md)
-2. **Signature Verification**: All voucher signatures MUST be verified before storage
-3. **Seller Authorization**: Write operations SHOULD be restricted to the voucher's designated seller
-4. **Rate Limiting**: Facilitators MAY implement rate limiting to prevent abuse
-5. **Caching**: GET endpoints MAY implement caching for performance

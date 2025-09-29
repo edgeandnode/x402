@@ -66,7 +66,7 @@ Buyer → deposit(seller, asset, amount) → Escrow Contract
 
 OR
 
-Facilitator → depositWithAuthorization(auth, signature) → Escrow Contract
+Buyer → depositWithAuthorization(auth, signature) → Escrow Contract
 ```
 
 ### 2. Service & Voucher Phase
@@ -206,6 +206,8 @@ struct FlushAllAuthorization {
 - `THAWING_PERIOD()` → `uint256` - Withdrawal thawing period (immutable, set at deployment)
 - `MAX_THAWING_PERIOD()` → `uint256` - Maximum allowed thawing period (30 days)
 - `DOMAIN_SEPARATOR()` → `bytes32` - EIP-712 domain separator
+
+## Appendix
 
 ### Multi-Chain Deployment
 
