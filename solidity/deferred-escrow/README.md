@@ -1,8 +1,6 @@
-## A2AP Contracts
+## DeferredPaymentEscrow
 
-These contracts will implement the escrowing and vouchers mechanism needed for the `deferred` x402 payment scheme.
-
-The main contract is DeferredPaymentEscrow.sol.
+Smart contracts implementing escrowing and vouchers mechanisms needed for the `deferred` x402 payment scheme. The main contract is `DeferredPaymentEscrow.sol`.
 
 ## Usage
 
