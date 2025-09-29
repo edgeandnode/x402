@@ -191,9 +191,11 @@ Example 402 response with an existing voucher:
 }
 ```
 
-### Voucher store specification
+### Facilitator specification
 
-Facilitators supporting the `deferred` scheme should offer a persistent voucher store for sellers. For a complete specification see [Voucher Store specification](./voucher_store.md).
+Facilitators supporting the `deferred` scheme should implement a voucher store for sellers and new APIs. Specification for these can be found here:
+- [Voucher Store specification](./voucher_store.md)
+- [Deferred Facilitator specification](./scheme_deferred_evm_facilitator.md)
 
 ### Escrow contract specification
 
