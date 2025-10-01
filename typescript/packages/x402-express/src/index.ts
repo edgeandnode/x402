@@ -26,7 +26,6 @@ import {
   DEFERRRED_SCHEME,
   DeferredEvmPayloadSchema,
   EXACT_SCHEME,
-  DeferredEvmPayloadSignedVoucher,
 } from "x402/types";
 import { useFacilitator } from "x402/verify";
 
@@ -353,28 +352,29 @@ export function paymentMiddleware(
 /**
  * Creates a deferred payment middleware factory for Express.
  *
- * Note: this middleware only performs x402 verification. In the deferred scheme,
- * settlement does not happen as part of the x402 resource request handshake.
+ * Note: this middleware does not perform the x402 settlement step. In the deferred scheme,
+ * settlement does not happen as part of the x402 resource request handshake, it happens later
+ * on in a "deferred" way.
  *
- * The middleware requires two server-implemented functions, executed before and after
- * x402 verification:
- * - retrieveVoucher: Before verification, retrieves the latest voucher for a given
- *   buyer/seller. Used to determine whether to create a new voucher or aggregate
- *   into the existing one.
- * - storeVoucher: After verification, allows the server to persist the newly created
- *   voucher. This can be stored locally or via a third-party service.
+ * The middleware delegates voucher storage to the facilitator but can be configured to store vouchers
+ * locally on the resource server. The server needs to implement it's own voucher store and expose two
+ * main functions for the middleware:
+ * - getAvailableVoucher: Retrieves the latest voucher for a given buyer/seller
+ * - storeVoucher: Persists newly created vouchers
+ *
+ * If `voucherStore` is not provided, voucher storage is delegated to the facilitator.
  *
  * @param payTo - The address to receive payments
  * @param routes - Configuration for protected routes and their payment requirements
- * @param getAvailableVoucher - A function to get the latest voucher for a given buyer and seller. Needs to be implemented by the server.
- * @param escrow - The escrow address
- * @param storeVoucher - A function to store the voucher. Needs to be implemented by the server.
+ * @param escrow - The escrow contract address
  * @param facilitator - Optional configuration for the payment facilitator service
+ * @param voucherStore - Optional voucher storage implementation with `getAvailableVoucher` and `storeVoucher` methods
  * @returns An Express middleware handler
  *
  * @example
  * ```typescript
  * // Simple configuration — all endpoints protected by $0.01 of USDC on Base Sepolia
+ * // Uses facilitator for voucher storage
  * app.use(
  *   deferredPaymentMiddleware(
  *     '0x123...', // payTo address
@@ -382,14 +382,12 @@ export function paymentMiddleware(
  *       price: '$0.01', // USDC amount in dollars
  *       network: 'base-sepolia',
  *     },
- *     retrieveVoucher,
  *     '0xescrowAddress...',
- *     storeVoucher,
  *     // Optional facilitator configuration (defaults to x402.org/facilitator for testnet usage)
  *   )
  * );
  *
- * // Advanced configuration — endpoint-specific requirements & custom facilitator
+ * // Advanced configuration — custom voucher store and facilitator
  * app.use(
  *   deferredPaymentMiddleware(
  *     '0x123...', // payTo
@@ -402,9 +400,7 @@ export function paymentMiddleware(
  *         },
  *       },
  *     },
- *     retrieveVoucher,
  *     '0xescrowAddress...',
- *     storeVoucher,
  *     {
  *       url: 'https://facilitator.example.com',
  *       createAuthHeaders: async () => ({
@@ -413,9 +409,14 @@ export function paymentMiddleware(
  *       }),
  *     },
  *     {
- *       cdpClientKey: 'your-cdp-client-key',
- *       appLogo: '/images/logo.svg',
- *       appName: 'My App',
+ *       getAvailableVoucher: async (buyer, seller) => {
+ *         // Custom implementation to retrieve voucher
+ *         return await db.getVoucher(buyer, seller);
+ *       },
+ *       storeVoucher: async (voucher) => {
+ *         // Custom implementation to store voucher
+ *         await db.saveVoucher(voucher);
+ *       },
  *     }
  *   )
  * );
@@ -424,16 +425,27 @@ export function paymentMiddleware(
 export function deferredPaymentMiddleware(
   payTo: Address,
   routes: RoutesConfig,
-  getAvailableVoucher: (
-    buyer: string,
-    seller: string,
-  ) => Promise<DeferredEvmPayloadSignedVoucher | null>,
   escrow: Address,
-  storeVoucher: (voucher: DeferredEvmPayloadSignedVoucher) => Promise<void>,
   facilitator?: FacilitatorConfig,
+  voucherStore?: Pick<
+    InstanceType<typeof deferred.evm.VoucherStore>,
+    "getAvailableVoucher" | "storeVoucher"
+  >,
 ) {
-  const { verify } = useFacilitator(facilitator);
   const x402Version = 1;
+  const { verify, deferred: deferredFacilitator } = useFacilitator(facilitator);
+
+  // Default voucher store is the facilitator
+  const facilitatorVoucherStore = {
+    getAvailableVoucher: async (buyer: string, seller: string) => {
+      const result = await deferredFacilitator.getAvailableVoucher(buyer, seller);
+      if ("error" in result) {
+        throw new Error(result.error);
+      }
+      return result;
+    },
+    storeVoucher: deferredFacilitator.storeVoucher,
+  };
 
   // Pre-compile route patterns to regex and extract verbs
   const routePatterns = computeRoutePatterns(routes);
@@ -481,7 +493,9 @@ export function deferredPaymentMiddleware(
           paymentBuyer as `0x${string}` | undefined,
           payTo,
           escrow,
-          getAvailableVoucher,
+          voucherStore
+            ? voucherStore.getAvailableVoucher
+            : facilitatorVoucherStore.getAvailableVoucher,
         ),
       },
     ];
@@ -529,38 +543,48 @@ export function deferredPaymentMiddleware(
       return;
     }
 
-    try {
-      const response = await verify(decodedPayment, selectedPaymentRequirements);
-      if (!response.isValid) {
+    // At this point x402 protocol requires POSTing to /verify the payment requirements
+    // If we are using the facilitator's voucher store then when posting to store the voucher the facilitator
+    // will already perform the same verification. So if we use the facilitator's voucher store we can skip /verify.
+    if (voucherStore) {
+      try {
+        // POST /verify to facilitator
+        const response = await verify(decodedPayment, selectedPaymentRequirements);
+        if (!response.isValid) {
+          res.status(402).json({
+            x402Version,
+            error: response.invalidReason,
+            accepts: toJsonSafe(paymentRequirements),
+            payer: response.payer,
+          });
+          return;
+        }
+
+        // Store voucher locally
+        const { voucher, signature } = DeferredEvmPayloadSchema.parse(decodedPayment.payload);
+        await voucherStore.storeVoucher({ ...voucher, signature });
+      } catch (error) {
+        console.log(error);
         res.status(402).json({
           x402Version,
-          error: response.invalidReason,
+          error,
           accepts: toJsonSafe(paymentRequirements),
-          payer: response.payer,
         });
         return;
       }
-    } catch (error) {
-      console.log(error);
-      res.status(402).json({
-        x402Version,
-        error,
-        accepts: toJsonSafe(paymentRequirements),
-      });
-      return;
-    }
-
-    try {
-      const { voucher, signature } = DeferredEvmPayloadSchema.parse(decodedPayment.payload);
-      await storeVoucher({ ...voucher, signature });
-    } catch (error) {
-      console.error(error);
-      res.status(402).json({
-        x402Version,
-        error,
-        accepts: toJsonSafe(paymentRequirements),
-      });
-      return;
+    } else {
+      try {
+        // skip POST /verify and store voucher in facilitator
+        await facilitatorVoucherStore.storeVoucher(decodedPayment, selectedPaymentRequirements);
+      } catch (error) {
+        console.error(error);
+        res.status(402).json({
+          x402Version,
+          error,
+          accepts: toJsonSafe(paymentRequirements),
+        });
+        return;
+      }
     }
 
     // Proceed to the next middleware or route handler
