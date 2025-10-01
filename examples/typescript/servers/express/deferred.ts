@@ -4,12 +4,10 @@
  * X402 Deferred Payment Joke Server - Simplified Example
  *
  * This is a minimal Express server demonstrating X402 deferred payment integration
- * using the standardized @project-a2ap/gateway client package.
+ * 
  */
 
 import express from "express";
-import { GatewayClient } from "@x402/gateway/client";
-import { deferred } from "x402/schemes";
 
 // Configuration
 const PORT = parseInt(process.env.PORT || "3002");
@@ -17,11 +15,6 @@ const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:3001";
 const PAYMENT_PRICE = process.env.PAYMENT_PRICE || "0.00001";
 const PAYMENT_NETWORK = (process.env.PAYMENT_NETWORK as "base-sepolia" | "base") || "base-sepolia";
 const PAYMENT_SELLER = process.env.PAYMENT_SELLER || "0xC93d37AD45c907eE1b27a02b2E1bd823BA9D379C";
-
-// Initialize Gateway client
-const gatewayClient = new GatewayClient({
-  baseUrl: GATEWAY_URL,
-});
 
 // Simple joke collections
 const FREE_JOKES = [
