@@ -18,7 +18,6 @@ import {
   EXACT_SCHEME,
   PaymentRequirements,
   PaymentRequirementsSchema,
-  Wallet,
 } from "x402/types";
 
 /**
@@ -136,12 +135,12 @@ export function withPaymentInterceptor(
  */
 export function withDeferredPaymentInterceptor(
   axiosClient: AxiosInstance,
-  walletClient: Wallet,
+  walletClient: Signer | MultiNetworkSigner,
   paymentRequirementsSelector: PaymentRequirementsSelector = selectPaymentRequirements,
 ) {
   // intercept the request to send a `X-PAYMENT-BUYER` header with each request
   axiosClient.interceptors.request.use(
-    async request => {
+    request => {
       const buyer =
         (walletClient as LocalAccount).address || (walletClient as Client).account?.address;
       if (buyer) {
@@ -150,13 +149,7 @@ export function withDeferredPaymentInterceptor(
 
       return request;
     },
-    async (error: AxiosError) => error,
-    {
-      synchronous: true,
-      runWhen() {
-        return true;
-      },
-    },
+    error => Promise.reject(error),
   );
   axiosClient.interceptors.response.use(
     response => response,

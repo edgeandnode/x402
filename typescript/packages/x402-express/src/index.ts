@@ -26,6 +26,7 @@ import {
   DEFERRRED_SCHEME,
   DeferredEvmPayloadSchema,
   EXACT_SCHEME,
+  SettleResponse,
 } from "x402/types";
 import { useFacilitator } from "x402/verify";
 
@@ -587,8 +588,43 @@ export function deferredPaymentMiddleware(
       }
     }
 
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    type EndArgs =
+      | [cb?: () => void]
+      | [chunk: any, cb?: () => void]
+      | [chunk: any, encoding: BufferEncoding, cb?: () => void];
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const originalEnd = res.end.bind(res);
+    let endArgs: EndArgs | null = null;
+
+    res.end = function (...args: EndArgs) {
+      endArgs = args;
+      return res; // maintain correct return type
+    };
+
     // Proceed to the next middleware or route handler
     next();
+
+    // If the response from the protected route is >= 400, do not set X-PAYMENT-RESPONSE
+    if (res.statusCode >= 400) {
+      res.end = originalEnd;
+      if (endArgs) {
+        originalEnd(...(endArgs as Parameters<typeof res.end>));
+      }
+      return;
+    }
+
+    // Return with X-PAYMENT-RESPONSE
+    const responseHeader = settleResponseHeader({
+      success: true,
+    } as SettleResponse);
+    res.setHeader("X-PAYMENT-RESPONSE", responseHeader);
+
+    res.end = originalEnd;
+    if (endArgs) {
+      originalEnd(...(endArgs as Parameters<typeof res.end>));
+    }
   };
 }
 
