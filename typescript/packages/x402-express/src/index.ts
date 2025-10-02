@@ -441,6 +441,9 @@ export function deferredPaymentMiddleware(
     getAvailableVoucher: async (buyer: string, seller: string) => {
       const result = await deferredFacilitator.getAvailableVoucher(buyer, seller);
       if ("error" in result) {
+        if (result.error === "voucher_not_found") {
+          return null;
+        }
         throw new Error(result.error);
       }
       return result;

@@ -40,6 +40,14 @@ async function main(): Promise<void> {
   const response = await api.get(endpointPath);
   console.log(response.data);
 
+  try {
+    const xPaymentHeader = response.config.headers["X-PAYMENT"];
+    const paymentPayload = JSON.parse(Buffer.from(xPaymentHeader, "base64").toString("utf-8"));
+    console.log("Deferred voucher details:");
+    console.log(paymentPayload.payload.voucher);
+  } catch (error) {
+    console.error(error);
+  }
   const paymentResponse = decodeXPaymentResponse(response.headers["x-payment-response"]);
   console.log(paymentResponse);
 }

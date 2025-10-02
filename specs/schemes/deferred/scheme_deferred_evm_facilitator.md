@@ -40,41 +40,81 @@ Returns the most suitable voucher for aggregation between a buyer-seller pair.
 
 ### POST /vouchers
 
-Stores a new signed voucher in the facilitator's voucher store.
+Stores a new signed voucher in the facilitator's voucher store after verifying it. The verification should be exactly the same as you'd get by POSTing to /verify. This allows for replacing that call for one to this endpoint.
 
 **Request Body:**
 ```json
 {
-  "voucher": {
-    "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
-    "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
-    "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
-    "valueAggregate": "6000000",
-    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
-    "timestamp": 1740673100,
-    "nonce": 3,
-    "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
-    "chainId": 84532,
-    "expiry": 1740759400
+  "paymentPayload": {
+    "x402Version": 1,
+    "network": "base-sepolia",
+    "scheme": "deferred",
+    "payload": {
+      "signature": "0x4b3f8e...",
+      "voucher": {
+        "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+        "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+        "valueAggregate": "6000000",
+        "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+        "timestamp": 1740673100,
+        "nonce": 3,
+        "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+        "chainId": 84532,
+        "expiry": 1740759400
+      }
+    }
   },
-  "signature": "0x4b3f8e..."
+  "paymentRequirements": {
+    "x402Version": 1,
+    "network": "base-sepolia",
+    "scheme": "deferred",
+    "recipient": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+    "amount": "1000000",
+    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+    "extra": {
+      "type": "aggregation",
+      "signature": "0x3a2f7e3b...",
+      "voucher": {
+        "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+        "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+        "valueAggregate": "5000000",
+        "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+        "timestamp": 1740673000,
+        "nonce": 2,
+        "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+        "chainId": 84532,
+        "expiry": 1740759400
+      }
+    }
+  }
 }
 ```
 
 **Response (201 Created):**
 ```json
 {
-  "success": true,
-  "voucherId": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
-  "nonce": 3
+  "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+  "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+  "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+  "valueAggregate": "6000000",
+  "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+  "timestamp": 1740673100,
+  "nonce": 3,
+  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+  "chainId": 84532,
+  "expiry": 1740759400,
+  "signature": "0x4b3f8e..."
 }
 ```
 
 **Response (400 Bad Request):**
 ```json
 {
-  "success": false,
-  "error": "Voucher already exists"
+  "isValid": false,
+  "invalidReason": "invalid_deferred_evm_payload_signature",
+  "payer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C"
 }
 ```
 

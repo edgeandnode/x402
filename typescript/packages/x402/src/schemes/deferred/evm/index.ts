@@ -4,5 +4,6 @@ export * from "./id";
 export * from "./server";
 export * from "./sign";
 export * from "./store";
+export * from "./store.mock";
 export * from "./utils/paymentUtils";
 export * from "./verify";
