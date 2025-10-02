@@ -7,11 +7,12 @@ import {
   DeferredPaymentRequirements,
   DEFERRRED_SCHEME,
 } from "../../../types/verify/schemes/deferred";
-import { VerifyResponse } from "../../../types";
+import { DeferredEscrowDepositAuthorization, VerifyResponse } from "../../../types";
 import { getNetworkId } from "../../../shared";
-import { verifyVoucher } from "./sign";
+import { verifyDepositAuthorizationInner, verifyPermit, verifyVoucher } from "./sign";
 import { ConnectedClient } from "../../../types/shared/evm/wallet";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
+import { usdcABI } from "../../../types/shared/evm/erc20PermitABI";
 import { VoucherStore } from "./store";
 
 /**
@@ -358,7 +359,8 @@ export function verifyVoucherDuplicate(
 }
 
 /**
- * Verifies the onchain state allows the payment to be settled
+ * Verifies the onchain state allows the payment to be settled. Accepts an optional deposit authorization, treating
+ * the associated funds as additional balance in the escrow deposit.
  *
  * - ✅ (on-chain) Verifies the client is connected to the chain specified in the payment requirements
  * - ✅ (on-chain) Verifies buyer has sufficient asset balance
@@ -366,6 +368,7 @@ export function verifyVoucherDuplicate(
  *
  * @param client - The client to use for the onchain state verification
  * @param voucher - The voucher to verify
+ * @param depositAuthorization - The deposit authorization to verify
  * @returns Verification result
  */
 export async function verifyOnchainState<
@@ -375,6 +378,7 @@ export async function verifyOnchainState<
 >(
   client: ConnectedClient<transport, chain, account>,
   voucher: DeferredEvmPayloadVoucher,
+  depositAuthorization?: DeferredEscrowDepositAuthorization,
 ): Promise<VerifyResponse> {
   // Verify the client is connected to the chain specified in the payment requirements
   if (client.chain.id !== voucher.chainId) {
@@ -383,6 +387,21 @@ export async function verifyOnchainState<
       invalidReason: "invalid_client_network",
       payer: voucher.buyer,
     };
+  }
+
+  // If a deposit authorization is provided and valid we consider it as additional balance in the escrow deposit
+  let authorizationBalance = 0n;
+  if (depositAuthorization) {
+    // Verify the deposit authorization is valid for the voucher asset and chain id
+    const depositAuthorizationResult = await verifyDepositAuthorization(
+      client,
+      voucher,
+      depositAuthorization,
+    );
+    if (!depositAuthorizationResult.isValid) {
+      return depositAuthorizationResult;
+    }
+    authorizationBalance = BigInt(depositAuthorization.depositAuthorization.amount);
   }
 
   // Verify buyer has sufficient asset balance in the escrow contract
@@ -436,10 +455,154 @@ export async function verifyOnchainState<
     };
   }
 
-  if (buyerAccount.balance < voucherOutstandingAmount) {
+  if (buyerAccount.balance + authorizationBalance < voucherOutstandingAmount) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
+      payer: voucher.buyer,
+    };
+  }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies a deposit authorization is valid. Checks the signature of the permit and the deposit authorization.
+ *
+ * @param client - The client to use for the onchain state verification
+ * @param voucher - The voucher that the deposit authorization is escrowing for
+ * @param depositAuthorization - The deposit authorization to verify
+ * @returns Verification result
+ */
+export async function verifyDepositAuthorization<
+  transport extends Transport,
+  chain extends Chain,
+  account extends Account | undefined,
+>(
+  client: ConnectedClient<transport, chain, account>,
+  voucher: DeferredEvmPayloadVoucher,
+  depositAuthorization: DeferredEscrowDepositAuthorization,
+): Promise<VerifyResponse> {
+  const { permit, depositAuthorization: depositAuthorizationInner } = depositAuthorization;
+
+  // Verify the permit signature
+  const isPermitValid = await verifyPermit(
+    permit,
+    permit.signature as Hex,
+    permit.owner as Address,
+    voucher.chainId,
+    voucher.asset as Address, // This ensures the permit is for the voucher's asset
+  );
+  if (!isPermitValid) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_permit_signature",
+      payer: permit.owner,
+    };
+  }
+
+  // Verify permit continuity
+  const now = Math.floor(Date.now() / 1000);
+  const oneWeek = 604800;
+  if (
+    getAddress(permit.owner) !== getAddress(voucher.buyer) ||
+    getAddress(permit.spender) !== getAddress(voucher.escrow) ||
+    permit.deadline < now + oneWeek
+  ) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_permit_continuity",
+      payer: permit.owner,
+    };
+  }
+
+  // Verify deposit authorization signature
+  const isDepositAuthorizationValid = await verifyDepositAuthorizationInner(
+    depositAuthorizationInner,
+    depositAuthorizationInner.signature as Hex,
+    depositAuthorizationInner.buyer as Address,
+    voucher.chainId,
+    voucher.escrow as Address,
+  );
+  if (!isDepositAuthorizationValid) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_signature",
+      payer: depositAuthorizationInner.buyer,
+    };
+  }
+
+  // Verify deposit authorization continuity
+  if (
+    getAddress(depositAuthorizationInner.buyer) !== getAddress(voucher.buyer) ||
+    getAddress(depositAuthorizationInner.seller) !== getAddress(voucher.seller) ||
+    getAddress(depositAuthorizationInner.asset) !== getAddress(voucher.asset) ||
+    depositAuthorizationInner.expiry < now + oneWeek
+  ) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_continuity",
+      payer: depositAuthorizationInner.buyer,
+    };
+  }
+
+  // Very permit / deposit authorization continuity
+  if (
+    getAddress(depositAuthorizationInner.buyer) !== getAddress(permit.owner) ||
+    BigInt(depositAuthorizationInner.amount) > BigInt(permit.value)
+  ) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_cross_continuity",
+      payer: depositAuthorizationInner.buyer,
+    };
+  }
+
+  // Verify permit nonce
+  try {
+    const permitNonce = await client.readContract({
+      address: voucher.asset as Address,
+      abi: usdcABI,
+      functionName: "nonces",
+      args: [voucher.buyer as Address],
+    });
+    if (permitNonce !== BigInt(permit.nonce)) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_permit_nonce_invalid",
+        payer: voucher.buyer,
+      };
+    }
+  } catch {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
+      payer: voucher.buyer,
+    };
+  }
+
+  // Verify deposit authorization nonce
+  try {
+    const nonceUsed = await client.readContract({
+      address: voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "isDepositAuthorizationNonceUsed",
+      args: [voucher.buyer as Address, depositAuthorizationInner.nonce as Hex],
+    });
+    if (nonceUsed) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
+        payer: voucher.buyer,
+      };
+    }
+  } catch {
+    return {
+      isValid: false,
+      invalidReason:
+        "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
       payer: voucher.buyer,
     };
   }

@@ -200,12 +200,10 @@ contract VoucherCollectionTest is BaseTest {
         );
 
         IDeferredPaymentEscrow.SignedVoucher[] memory signedVouchers = new IDeferredPaymentEscrow.SignedVoucher[](2);
-        signedVouchers[0] = IDeferredPaymentEscrow.SignedVoucher({
-            voucher: voucher1, signature: signVoucher(voucher1, buyerPrivateKey)
-        });
-        signedVouchers[1] = IDeferredPaymentEscrow.SignedVoucher({
-            voucher: voucher2, signature: signVoucher(voucher2, buyerPrivateKey)
-        });
+        signedVouchers[0] =
+            IDeferredPaymentEscrow.SignedVoucher({voucher: voucher1, signature: signVoucher(voucher1, buyerPrivateKey)});
+        signedVouchers[1] =
+            IDeferredPaymentEscrow.SignedVoucher({voucher: voucher2, signature: signVoucher(voucher2, buyerPrivateKey)});
 
         // First batch collection
         vm.prank(seller);
@@ -301,9 +299,8 @@ contract VoucherCollectionTest is BaseTest {
     }
 
     function test_Collect_ZeroVoucherValue() public {
-        IDeferredPaymentEscrow.Voucher memory voucher = createVoucher(
-            VOUCHER_ID, buyerFromPrivateKey, seller, 0, address(usdc), voucherTimestamp, 1, voucherExpiry
-        );
+        IDeferredPaymentEscrow.Voucher memory voucher =
+            createVoucher(VOUCHER_ID, buyerFromPrivateKey, seller, 0, address(usdc), voucherTimestamp, 1, voucherExpiry);
 
         bytes memory signature = signVoucher(voucher, buyerPrivateKey);
 

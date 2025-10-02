@@ -110,7 +110,9 @@ contract ViewFunctionTest is BaseTest {
 
         // Test flush all authorization validation
         IDeferredPaymentEscrow.FlushAllAuthorization memory flushAllAuth = IDeferredPaymentEscrow.FlushAllAuthorization({
-            buyer: buyerFromPrivateKey, nonce: keccak256("flush-all-nonce"), expiry: voucherExpiry
+            buyer: buyerFromPrivateKey,
+            nonce: keccak256("flush-all-nonce"),
+            expiry: voucherExpiry
         });
 
         bytes memory flushAllSignature = signFlushAllAuthorization(flushAllAuth, buyerPrivateKey);

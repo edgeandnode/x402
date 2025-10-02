@@ -5,6 +5,7 @@ import {
   HexEncoded64ByteRegex,
   EvmMaxAtomicUnits,
   EvmTransactionHashRegex,
+  HexEncoded32ByteRegex,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
@@ -43,6 +44,15 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_voucher_error_settling_store",
   "invalid_deferred_evm_payload_voucher_not_found",
   "invalid_deferred_evm_payload_voucher_found_not_duplicate",
+  "invalid_deferred_evm_payload_permit_signature",
+  "invalid_deferred_evm_payload_deposit_authorization_signature",
+  "invalid_deferred_evm_payload_permit_continuity",
+  "invalid_deferred_evm_payload_deposit_authorization_continuity",
+  "invalid_deferred_evm_payload_deposit_authorization_cross_continuity",
+  "invalid_deferred_evm_contract_call_failed_nonces",
+  "invalid_deferred_evm_payload_permit_nonce_invalid",
+  "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
+  "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -78,10 +88,67 @@ export const DeferredVoucherCollectionSchema = z.object({
 });
 export type DeferredVoucherCollection = z.infer<typeof DeferredVoucherCollectionSchema>;
 
+// x402DeferredEscrowDepositAuthorizationPermit
+export const DeferredEscrowDepositAuthorizationPermitSchema = z.object({
+  owner: z.string().regex(EvmAddressRegex),
+  spender: z.string().regex(EvmAddressRegex),
+  value: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  nonce: z.string().regex(HexEncoded32ByteRegex),
+  deadline: z.number().int().nonnegative(),
+  domain: z.object({
+    name: z.string(),
+    version: z.string(),
+  }),
+});
+export type DeferredEscrowDepositAuthorizationPermit = z.infer<
+  typeof DeferredEscrowDepositAuthorizationPermitSchema
+>;
+
+// x402DeferredEscrowDepositAuthorizationSignedPermit
+export const DeferredEscrowDepositAuthorizationSignedPermitSchema =
+  DeferredEscrowDepositAuthorizationPermitSchema.extend({
+    signature: z.string().regex(EvmSignatureRegex),
+  });
+export type DeferredEscrowDepositAuthorizationSignedPermit = z.infer<
+  typeof DeferredEscrowDepositAuthorizationSignedPermitSchema
+>;
+
+// x402DeferredEscrowDepositAuthorizationInner
+export const DeferredEscrowDepositAuthorizationInnerSchema = z.object({
+  buyer: z.string().regex(EvmAddressRegex),
+  seller: z.string().regex(EvmAddressRegex),
+  asset: z.string().regex(EvmAddressRegex),
+  amount: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  nonce: z.string().regex(HexEncoded32ByteRegex),
+  expiry: z.number().int().nonnegative(),
+});
+export type DeferredEscrowDepositAuthorizationInner = z.infer<
+  typeof DeferredEscrowDepositAuthorizationInnerSchema
+>;
+
+// x402DeferredEscrowDepositAuthorizationSignedInner
+export const DeferredEscrowDepositAuthorizationSignedInnerSchema =
+  DeferredEscrowDepositAuthorizationInnerSchema.extend({
+    signature: z.string().regex(EvmSignatureRegex),
+  });
+export type DeferredEscrowDepositAuthorizationSignedInner = z.infer<
+  typeof DeferredEscrowDepositAuthorizationSignedInnerSchema
+>;
+
+// x402DeferredEscrowDepositAuthorization
+export const DeferredEscrowDepositAuthorizationSchema = z.object({
+  permit: DeferredEscrowDepositAuthorizationSignedPermitSchema,
+  depositAuthorization: DeferredEscrowDepositAuthorizationSignedInnerSchema,
+});
+export type DeferredEscrowDepositAuthorization = z.infer<
+  typeof DeferredEscrowDepositAuthorizationSchema
+>;
+
 // x402DeferredEvmPayload
 export const DeferredEvmPayloadSchema = z.object({
   signature: z.string().regex(EvmSignatureRegex),
   voucher: DeferredEvmPayloadVoucherSchema,
+  depositAuthorization: DeferredEscrowDepositAuthorizationSchema.optional(),
 });
 export type DeferredEvmPayload = z.infer<typeof DeferredEvmPayloadSchema>;
 

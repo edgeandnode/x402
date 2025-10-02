@@ -456,6 +456,36 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
     }
 
     /**
+     * @notice Validate a deposit authorization nonce
+     * @param buyer Address of the buyer
+     * @param nonce The nonce to validate
+     * @return True if nonce is used
+     */
+    function isDepositAuthorizationNonceUsed(address buyer, bytes32 nonce) external view returns (bool) {
+        return _getMainStorage().usedDepositNonces[buyer][nonce];
+    }
+
+    /**
+     * @notice Validate a flush authorization nonce
+     * @param buyer Address of the buyer
+     * @param nonce The nonce to validate
+     * @return True if nonce is used
+     */
+    function isFlushAuthorizationNonceUsed(address buyer, bytes32 nonce) external view returns (bool) {
+        return _getMainStorage().usedFlushNonces[buyer][nonce];
+    }
+
+    /**
+     * @notice Validate a flush all authorization nonce
+     * @param buyer Address of the buyer
+     * @param nonce The nonce to validate
+     * @return True if nonce is used
+     */
+    function isFlushAllAuthorizationNonceUsed(address buyer, bytes32 nonce) external view returns (bool) {
+        return _getMainStorage().usedFlushAllNonces[buyer][nonce];
+    }
+
+    /**
      * @notice Get the EIP-712 domain separator
      * @return Domain separator hash
      */

@@ -8,6 +8,7 @@ import {
   VerifyResponse,
 } from "../../../types/verify";
 import {
+  DeferredEscrowDepositAuthorization,
   DeferredEvmPayloadVoucher,
   DeferredPaymentPayloadSchema,
   DeferredPaymentRequirementsSchema,
@@ -89,7 +90,11 @@ export async function verify<
   }
 
   // Verify the onchain state allows the payment to be settled
-  const onchainResult = await verifyOnchainState(client, paymentPayload.payload.voucher);
+  const onchainResult = await verifyOnchainState(
+    client,
+    paymentPayload.payload.voucher,
+    paymentPayload.payload.depositAuthorization,
+  );
   if (!onchainResult.isValid) {
     return onchainResult;
   }
@@ -136,8 +141,14 @@ export async function settle<transport extends Transport, chain extends Chain>(
     };
   }
 
-  const { voucher, signature } = paymentPayload.payload;
-  const response = await settleVoucher(wallet, voucher, signature, voucherStore);
+  const { voucher, signature, depositAuthorization } = paymentPayload.payload;
+  const response = await settleVoucher(
+    wallet,
+    voucher,
+    signature,
+    voucherStore,
+    depositAuthorization,
+  );
 
   return {
     ...response,
@@ -157,6 +168,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
  * @param voucher - The voucher to settle
  * @param signature - The signature of the voucher
  * @param voucherStore - The voucher store to use for verification
+ * @param depositAuthorization - A deposit authorization to use for verification purposes
  * @returns A PaymentExecutionResponse containing the transaction status and hash
  */
 export async function settleVoucher<transport extends Transport, chain extends Chain>(
@@ -164,6 +176,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
   voucher: DeferredEvmPayloadVoucher,
   signature: string,
   voucherStore: VoucherStore,
+  depositAuthorization?: DeferredEscrowDepositAuthorization,
 ): Promise<SettleResponse> {
   // Verify the voucher signature
   const signatureResult = await verifyVoucherSignature(voucher, signature);
@@ -194,7 +207,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
   }
 
   // Verify the onchain state allows the payment to be settled
-  const valid = await verifyOnchainState(wallet, voucher);
+  const valid = await verifyOnchainState(wallet, voucher, depositAuthorization);
   if (!valid.isValid) {
     return {
       success: false,

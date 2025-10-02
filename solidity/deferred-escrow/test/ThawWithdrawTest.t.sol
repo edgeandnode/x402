@@ -236,7 +236,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         // Sign with buyer's private key using helper
@@ -272,7 +276,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         // Sign authorization
@@ -297,7 +305,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         // Sign with buyer's private key
@@ -377,7 +389,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization with updated expiry
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         bytes memory signature = signFlushAuthorization(auth, buyerPrivateKey);
@@ -456,7 +472,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         // Sign with buyer's private key
@@ -498,7 +518,11 @@ contract ThawWithdrawTest is BaseTest {
 
         // Create flush authorization
         IDeferredPaymentEscrow.FlushAuthorization memory auth = IDeferredPaymentEscrow.FlushAuthorization({
-            buyer: buyerFromPrivateKey, seller: seller, asset: address(usdc), nonce: nonce, expiry: expiry
+            buyer: buyerFromPrivateKey,
+            seller: seller,
+            asset: address(usdc),
+            nonce: nonce,
+            expiry: expiry
         });
 
         // Sign authorization

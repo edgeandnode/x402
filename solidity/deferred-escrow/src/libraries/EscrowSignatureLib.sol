@@ -125,9 +125,8 @@ library EscrowSignatureLib {
         bytes calldata signature,
         bytes32 domainSeparator
     ) external view returns (bool) {
-        bytes32 structHash = keccak256(
-            abi.encode(FLUSH_ALL_AUTHORIZATION_TYPEHASH, auth.buyer, auth.nonce, auth.expiry)
-        );
+        bytes32 structHash =
+            keccak256(abi.encode(FLUSH_ALL_AUTHORIZATION_TYPEHASH, auth.buyer, auth.nonce, auth.expiry));
 
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
 
