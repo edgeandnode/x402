@@ -20,9 +20,13 @@ import { VoucherStore } from "./store";
 import { Account, Chain, getAddress, Transport } from "viem";
 import { signVoucher } from "./sign";
 
-vi.mock("../../../shared", () => ({
-  getNetworkId: vi.fn(),
-}));
+vi.mock("../../../shared", async (original: () => Promise<Record<string, unknown>>) => {
+  const actual = await original();
+  return {
+    ...(actual as Record<string, unknown>),
+    getNetworkId: vi.fn(),
+  };
+});
 
 const buyer = createSigner(
   "base-sepolia",

@@ -291,7 +291,7 @@ describe("withDeferredPaymentInterceptor", () => {
     // Set up the interceptor
     withDeferredPaymentInterceptor(mockAxiosClient, mockWalletClient);
     requestInterceptor = (mockAxiosClient.interceptors.request.use as ReturnType<typeof vi.fn>).mock
-      .calls[0][1];
+      .calls[0][0];
     responseInterceptor = (mockAxiosClient.interceptors.response.use as ReturnType<typeof vi.fn>)
       .mock.calls[0][1];
   });
