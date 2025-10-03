@@ -430,15 +430,25 @@ describe("Deferred Payment Integration Tests", () => {
  * @param wallet - The wallet to mock blockchain interactions for
  */
 function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>) {
-  vi.mocked(wallet.readContract)
-    .mockResolvedValueOnce([BigInt(1_000_000)])
-    .mockResolvedValueOnce({
-      balance: BigInt(10_000_000),
-    })
-    .mockResolvedValueOnce([BigInt(1_000_000)])
-    .mockResolvedValueOnce({
-      balance: BigInt(10_000_000),
-    });
+  vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getOutstandingAndCollectableAmount") {
+      return [BigInt(1_000_000)];
+    }
+    if (args.functionName === "getAccount") {
+      return {
+        balance: BigInt(10_000_000),
+        thawingAmount: BigInt(0),
+        thawEndTime: BigInt(0),
+      };
+    }
+    if (args.functionName === "nonces") {
+      return BigInt(0);
+    }
+    if (args.functionName === "isDepositAuthorizationNonceUsed") {
+      return false;
+    }
+    throw new Error(`Unmocked contract read: ${args.functionName}`);
+  });
   vi.mocked(wallet.writeContract).mockResolvedValue("0x1234567890abcdef");
   vi.mocked(wallet.waitForTransactionReceipt).mockResolvedValue({
     status: "success",
@@ -462,9 +472,23 @@ function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>
  * @param wallet - The wallet to mock blockchain interactions for
  */
 function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>) {
-  vi.mocked(wallet.readContract)
-    .mockResolvedValueOnce([BigInt(1_000_000)])
-    .mockResolvedValueOnce({
-      balance: BigInt(10_000_000),
-    });
+  vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getOutstandingAndCollectableAmount") {
+      return [BigInt(1_000_000)];
+    }
+    if (args.functionName === "getAccount") {
+      return {
+        balance: BigInt(10_000_000),
+        thawingAmount: BigInt(0),
+        thawEndTime: BigInt(0),
+      };
+    }
+    if (args.functionName === "nonces") {
+      return BigInt(0);
+    }
+    if (args.functionName === "isDepositAuthorizationNonceUsed") {
+      return false;
+    }
+    throw new Error(`Unmocked contract read: ${args.functionName}`);
+  });
 }
