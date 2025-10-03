@@ -47,12 +47,14 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_deposit_authorization_signature",
   "invalid_deferred_evm_payload_permit_continuity",
   "invalid_deferred_evm_payload_deposit_authorization_continuity",
-  "invalid_deferred_evm_payload_deposit_authorization_cross_continuity",
   "invalid_deferred_evm_contract_call_failed_nonces",
   "invalid_deferred_evm_payload_permit_nonce_invalid",
   "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
   "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
   "invalid_deferred_evm_payload_deposit_authorization_failed",
+  "invalid_deferred_evm_payload_deposit_authorization_buyer_mismatch",
+  "invalid_deferred_evm_contract_call_failed_allowance",
+  "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -137,7 +139,7 @@ export type DeferredEscrowDepositAuthorizationSignedInner = z.infer<
 
 // x402DeferredEscrowDepositAuthorization
 export const DeferredEscrowDepositAuthorizationSchema = z.object({
-  permit: DeferredEscrowDepositAuthorizationSignedPermitSchema,
+  permit: DeferredEscrowDepositAuthorizationSignedPermitSchema.optional(),
   depositAuthorization: DeferredEscrowDepositAuthorizationSignedInnerSchema,
 });
 export type DeferredEscrowDepositAuthorization = z.infer<

@@ -487,35 +487,38 @@ export async function verifyDepositAuthorization<
 ): Promise<VerifyResponse> {
   const { permit, depositAuthorization: depositAuthorizationInner } = depositAuthorization;
 
-  // Verify the permit signature
-  const isPermitValid = await verifyPermit(
-    permit,
-    permit.signature as Hex,
-    permit.owner as Address,
-    voucher.chainId,
-    voucher.asset as Address, // This ensures the permit is for the voucher's asset
-  );
-  if (!isPermitValid) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_permit_signature",
-      payer: permit.owner,
-    };
-  }
+  const DATE_NOW = Math.floor(Date.now() / 1000);
+  const DATE_ONE_WEEK = 604800;
 
-  // Verify permit continuity
-  const now = Math.floor(Date.now() / 1000);
-  const oneWeek = 604800;
-  if (
-    getAddress(permit.owner) !== getAddress(voucher.buyer) ||
-    getAddress(permit.spender) !== getAddress(voucher.escrow) ||
-    permit.deadline < now + oneWeek
-  ) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_permit_continuity",
-      payer: permit.owner,
-    };
+  // Verify the permit signature
+  if (permit) {
+    const isPermitValid = await verifyPermit(
+      permit,
+      permit.signature as Hex,
+      permit.owner as Address,
+      voucher.chainId,
+      voucher.asset as Address, // This ensures the permit is for the voucher's asset
+    );
+    if (!isPermitValid) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_permit_signature",
+        payer: permit.owner,
+      };
+    }
+
+    // Verify permit continuity
+    if (
+      getAddress(permit.owner) !== getAddress(voucher.buyer) ||
+      getAddress(permit.spender) !== getAddress(voucher.escrow) ||
+      permit.deadline < DATE_NOW + DATE_ONE_WEEK
+    ) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_permit_continuity",
+        payer: permit.owner,
+      };
+    }
   }
 
   // Verify deposit authorization signature
@@ -539,7 +542,7 @@ export async function verifyDepositAuthorization<
     getAddress(depositAuthorizationInner.buyer) !== getAddress(voucher.buyer) ||
     getAddress(depositAuthorizationInner.seller) !== getAddress(voucher.seller) ||
     getAddress(depositAuthorizationInner.asset) !== getAddress(voucher.asset) ||
-    depositAuthorizationInner.expiry < now + oneWeek
+    depositAuthorizationInner.expiry < DATE_NOW + DATE_ONE_WEEK
   ) {
     return {
       isValid: false,
@@ -548,39 +551,70 @@ export async function verifyDepositAuthorization<
     };
   }
 
-  // Very permit / deposit authorization continuity
-  if (
-    getAddress(depositAuthorizationInner.buyer) !== getAddress(permit.owner) ||
-    BigInt(depositAuthorizationInner.amount) > BigInt(permit.value)
-  ) {
+  // Verify permit owner matches the deposit authorization buyer
+  if (permit) {
+    if (getAddress(depositAuthorizationInner.buyer) !== getAddress(permit.owner)) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_deposit_authorization_buyer_mismatch",
+        payer: depositAuthorizationInner.buyer,
+      };
+    }
+  }
+
+  // Verify escrow can pull from the buyer's account based on their allowance (or permit)
+  // Consider current allowance if there is no permit
+  let allowance = 0n;
+  if (!permit) {
+    try {
+      allowance = await client.readContract({
+        address: voucher.asset as Address,
+        abi: usdcABI,
+        functionName: "allowance",
+        args: [voucher.buyer as Address, voucher.escrow as Address],
+      });
+    } catch {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_contract_call_failed_allowance",
+        payer: voucher.buyer,
+      };
+    }
+  } else {
+    allowance = BigInt(permit.value);
+  }
+
+  if (BigInt(depositAuthorizationInner.amount) > allowance) {
     return {
       isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_cross_continuity",
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
       payer: depositAuthorizationInner.buyer,
     };
   }
 
   // Verify permit nonce
-  try {
-    const permitNonce = await client.readContract({
-      address: voucher.asset as Address,
-      abi: usdcABI,
-      functionName: "nonces",
-      args: [voucher.buyer as Address],
-    });
-    if (permitNonce !== BigInt(permit.nonce)) {
+  if (permit) {
+    try {
+      const permitNonce = await client.readContract({
+        address: voucher.asset as Address,
+        abi: usdcABI,
+        functionName: "nonces",
+        args: [voucher.buyer as Address],
+      });
+      if (permitNonce !== BigInt(permit.nonce)) {
+        return {
+          isValid: false,
+          invalidReason: "invalid_deferred_evm_payload_permit_nonce_invalid",
+          payer: voucher.buyer,
+        };
+      }
+    } catch {
       return {
         isValid: false,
-        invalidReason: "invalid_deferred_evm_payload_permit_nonce_invalid",
+        invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
         payer: voucher.buyer,
       };
     }
-  } catch {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
-      payer: voucher.buyer,
-    };
   }
 
   // Verify deposit authorization nonce

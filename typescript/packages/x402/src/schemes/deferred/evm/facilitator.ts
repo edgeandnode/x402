@@ -343,55 +343,59 @@ export async function depositWithAuthorization<transport extends Transport, chai
       success: false,
       errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
       transaction: "",
-      payer: depositAuthorization.permit.owner,
+      payer: depositAuthorization.depositAuthorization.buyer,
     };
   }
 
   const { permit, depositAuthorization: depositAuthorizationInnerWithSignature } =
     depositAuthorization;
-  const { v, r, s, yParity } = parseSignature(permit.signature as `0x${string}`);
-  const { signature: depositAuthorizationSignature, ...depositAuthorizationInner } =
-    depositAuthorizationInnerWithSignature;
 
   // Send permit() transaction
-  let permitTx = "";
-  try {
-    permitTx = await wallet.writeContract({
-      address: voucher.asset as Address,
-      abi: usdcABI,
-      functionName: "permit" as const,
-      args: [
-        getAddress(permit.owner),
-        getAddress(permit.spender),
-        BigInt(permit.value),
-        BigInt(permit.deadline),
-        Number(v ?? (yParity === 0 ? 27n : 28n)),
-        r,
-        s,
-      ],
-      chain: wallet.chain as Chain,
-    });
-  } catch (error) {
-    console.error(error);
-    return {
-      success: false,
-      errorReason: "invalid_transaction_reverted",
-      transaction: "",
-      payer: depositAuthorization.permit.owner,
-    };
-  }
+  if (permit) {
+    const { v, r, s, yParity } = parseSignature(permit.signature as `0x${string}`);
+    let permitTx = "";
+    try {
+      permitTx = await wallet.writeContract({
+        address: voucher.asset as Address,
+        abi: usdcABI,
+        functionName: "permit" as const,
+        args: [
+          getAddress(permit.owner),
+          getAddress(permit.spender),
+          BigInt(permit.value),
+          BigInt(permit.deadline),
+          Number(v ?? (yParity === 0 ? 27n : 28n)),
+          r,
+          s,
+        ],
+        chain: wallet.chain as Chain,
+      });
+    } catch (error) {
+      console.error(error);
+      return {
+        success: false,
+        errorReason: "invalid_transaction_reverted",
+        transaction: "",
+        payer: permit.owner,
+      };
+    }
 
-  const permitReceipt = await wallet.waitForTransactionReceipt({ hash: permitTx as `0x${string}` });
-  if (permitReceipt.status !== "success") {
-    return {
-      success: false,
-      errorReason: "invalid_transaction_state",
-      transaction: permitTx,
-      payer: depositAuthorization.permit.owner,
-    };
+    const permitReceipt = await wallet.waitForTransactionReceipt({
+      hash: permitTx as `0x${string}`,
+    });
+    if (permitReceipt.status !== "success") {
+      return {
+        success: false,
+        errorReason: "invalid_transaction_state",
+        transaction: permitTx,
+        payer: permit.owner,
+      };
+    }
   }
 
   // Send depositWithAuthorization() transaction
+  const { signature: depositAuthorizationSignature, ...depositAuthorizationInner } =
+    depositAuthorizationInnerWithSignature;
   let tx = "";
   try {
     tx = await wallet.writeContract({
@@ -434,6 +438,6 @@ export async function depositWithAuthorization<transport extends Transport, chai
   return {
     success: true,
     transaction: tx,
-    payer: depositAuthorization.permit.owner,
+    payer: depositAuthorization.depositAuthorization.buyer,
   };
 }

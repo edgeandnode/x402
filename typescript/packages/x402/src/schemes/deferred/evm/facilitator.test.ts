@@ -596,7 +596,7 @@ describe("facilitator - depositWithAuthorization", () => {
     expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
   };
 
-  const mockDepositAuthorization = {
+  const mockDepositAuthorizationWithPermit = {
     permit: {
       owner: buyerAddress,
       spender: escrowAddress,
@@ -610,6 +610,19 @@ describe("facilitator - depositWithAuthorization", () => {
       signature:
         "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c",
     },
+    depositAuthorization: {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: "1000000",
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+    },
+  };
+
+  const mockDepositAuthorizationWithoutPermit = {
     depositAuthorization: {
       buyer: buyerAddress,
       seller: sellerAddress,
@@ -649,11 +662,11 @@ describe("facilitator - depositWithAuthorization", () => {
     vi.resetAllMocks();
   });
 
-  it("should deposit with authorization successfully", async () => {
+  it("should deposit with authorization successfully with permit", async () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
@@ -676,7 +689,7 @@ describe("facilitator - depositWithAuthorization", () => {
     expect(permitCall.args?.[0]).toBe(buyerAddress);
     expect((permitCall.args?.[1] as Address).toLowerCase()).toBe(escrowAddress.toLowerCase());
     expect(permitCall.args?.[2]).toBe(BigInt("1000000"));
-    expect(permitCall.args?.[3]).toBe(BigInt(mockDepositAuthorization.permit.deadline));
+    expect(permitCall.args?.[3]).toBe(BigInt(mockDepositAuthorizationWithPermit.permit.deadline));
 
     // Verify depositWithAuthorization call
     const depositCall = vi.mocked(mockWallet.writeContract).mock.calls[1][0];
@@ -697,6 +710,41 @@ describe("facilitator - depositWithAuthorization", () => {
     expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(2);
   });
 
+  it("should deposit with authorization successfully without permit", async () => {
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorizationWithoutPermit,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract only once (depositWithAuthorization, no permit)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+
+    // Verify depositWithAuthorization call
+    const depositCall = vi.mocked(mockWallet.writeContract).mock.calls[0][0];
+    expect(depositCall).toMatchObject({
+      address: escrowAddress,
+      functionName: "depositWithAuthorization",
+      chain: mockWallet.chain,
+    });
+    expect(depositCall.args).toHaveLength(2);
+    expect(depositCall.args?.[0]).toMatchObject({
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: BigInt("1000000"),
+    });
+
+    // Should have waited for only one receipt
+    expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+  });
+
   it("should return error when deposit authorization verification fails", async () => {
     vi.mocked(verifyModule.verifyDepositAuthorization).mockResolvedValue({
       isValid: false,
@@ -706,7 +754,7 @@ describe("facilitator - depositWithAuthorization", () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
@@ -726,7 +774,7 @@ describe("facilitator - depositWithAuthorization", () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
@@ -748,7 +796,7 @@ describe("facilitator - depositWithAuthorization", () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
@@ -763,7 +811,7 @@ describe("facilitator - depositWithAuthorization", () => {
     expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
   });
 
-  it("should return error when depositWithAuthorization transaction fails", async () => {
+  it("should return error when depositWithAuthorization transaction fails with permit", async () => {
     mockWallet.writeContract = vi
       .fn()
       .mockResolvedValueOnce("0x1234567890abcdef") // permit succeeds
@@ -772,7 +820,7 @@ describe("facilitator - depositWithAuthorization", () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
@@ -786,6 +834,26 @@ describe("facilitator - depositWithAuthorization", () => {
     expect(mockWallet.writeContract).toHaveBeenCalledTimes(2);
   });
 
+  it("should return error when depositWithAuthorization transaction fails without permit", async () => {
+    mockWallet.writeContract = vi.fn().mockRejectedValueOnce(new Error("Deposit failed"));
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorizationWithoutPermit,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract once
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+  });
+
   it("should return error when depositWithAuthorization receipt shows failure", async () => {
     mockWallet.waitForTransactionReceipt = vi
       .fn()
@@ -795,7 +863,7 @@ describe("facilitator - depositWithAuthorization", () => {
     const result = await depositWithAuthorization(
       mockWallet,
       mockVoucher,
-      mockDepositAuthorization,
+      mockDepositAuthorizationWithPermit,
     );
 
     expect(result).toEqual({
