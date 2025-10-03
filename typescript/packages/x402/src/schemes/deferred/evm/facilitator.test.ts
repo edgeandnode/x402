@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Chain, Log, Transport } from "viem";
+import { Address, Chain, Log, Transport } from "viem";
 import { createSigner, ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements, SchemeContext } from "../../../types/verify";
 import { DeferredPaymentPayload, DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
-import { verify, settle, settleVoucher } from "./facilitator";
+import { verify, settle, settleVoucher, depositWithAuthorization } from "./facilitator";
 import { VoucherStore } from "./store";
 import * as verifyModule from "./verify";
 
@@ -14,6 +14,7 @@ vi.mock("./verify", () => ({
   verifyVoucherSignature: vi.fn(),
   verifyVoucherAvailability: vi.fn(),
   verifyOnchainState: vi.fn(),
+  verifyDepositAuthorization: vi.fn(),
 }));
 
 const buyer = createSigner(
@@ -578,5 +579,234 @@ describe("facilitator - settleVoucher", () => {
       "0x1234567890abcdef",
       0n, // Default amount when no logs
     );
+  });
+});
+
+describe("facilitator - depositWithAuthorization", () => {
+  const mockVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+  };
+
+  const mockDepositAuthorization = {
+    permit: {
+      owner: buyerAddress,
+      spender: escrowAddress,
+      value: "1000000",
+      nonce: 0,
+      deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      domain: {
+        name: "USD Coin",
+        version: "2",
+      },
+      signature:
+        "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c",
+    },
+    depositAuthorization: {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: "1000000",
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+    },
+  };
+
+  let mockWallet: SignerWallet<Chain, Transport>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock successful verification by default
+    vi.mocked(verifyModule.verifyDepositAuthorization).mockResolvedValue({ isValid: true });
+
+    // Create a proper mock wallet with all required properties
+    mockWallet = {
+      account: {
+        address: buyerAddress,
+      },
+      chain: { id: 84532 },
+      readContract: vi.fn(),
+      writeContract: vi.fn().mockResolvedValue("0x1234567890abcdef"),
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        logs: [],
+      }),
+    } as unknown as SignerWallet<Chain, Transport>;
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should deposit with authorization successfully", async () => {
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract twice (permit + depositWithAuthorization)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(2);
+
+    // Verify permit call - args: [owner, spender, value, deadline, v, r, s]
+    const permitCall = vi.mocked(mockWallet.writeContract).mock.calls[0][0];
+    expect(permitCall).toMatchObject({
+      address: assetAddress,
+      functionName: "permit",
+      chain: mockWallet.chain,
+    });
+    expect(permitCall.args).toHaveLength(7);
+    expect(permitCall.args?.[0]).toBe(buyerAddress);
+    expect((permitCall.args?.[1] as Address).toLowerCase()).toBe(escrowAddress.toLowerCase());
+    expect(permitCall.args?.[2]).toBe(BigInt("1000000"));
+    expect(permitCall.args?.[3]).toBe(BigInt(mockDepositAuthorization.permit.deadline));
+
+    // Verify depositWithAuthorization call
+    const depositCall = vi.mocked(mockWallet.writeContract).mock.calls[1][0];
+    expect(depositCall).toMatchObject({
+      address: escrowAddress,
+      functionName: "depositWithAuthorization",
+      chain: mockWallet.chain,
+    });
+    expect(depositCall.args).toHaveLength(2);
+    expect(depositCall.args?.[0]).toMatchObject({
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: BigInt("1000000"),
+    });
+
+    // Should have waited for both receipts
+    expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(2);
+  });
+
+  it("should return error when deposit authorization verification fails", async () => {
+    vi.mocked(verifyModule.verifyDepositAuthorization).mockResolvedValue({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_permit_signature",
+    });
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_permit_signature",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    // Should not have called any contract writes
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("should return error when permit transaction fails", async () => {
+    mockWallet.writeContract = vi.fn().mockRejectedValueOnce(new Error("Permit failed"));
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    // Should have only called writeContract once (permit failed)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return error when permit transaction receipt shows failure", async () => {
+    mockWallet.waitForTransactionReceipt = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "reverted", logs: [] });
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have only called writeContract once (permit succeeded but reverted)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+    expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return error when depositWithAuthorization transaction fails", async () => {
+    mockWallet.writeContract = vi
+      .fn()
+      .mockResolvedValueOnce("0x1234567890abcdef") // permit succeeds
+      .mockRejectedValueOnce(new Error("Deposit failed")); // depositWithAuthorization fails
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract twice
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(2);
+  });
+
+  it("should return error when depositWithAuthorization receipt shows failure", async () => {
+    mockWallet.waitForTransactionReceipt = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "success", logs: [] }) // permit succeeds
+      .mockResolvedValueOnce({ status: "reverted", logs: [] }); // depositWithAuthorization reverts
+
+    const result = await depositWithAuthorization(
+      mockWallet,
+      mockVoucher,
+      mockDepositAuthorization,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have completed both transactions
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(2);
+    expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(2);
   });
 });

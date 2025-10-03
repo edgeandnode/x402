@@ -4,13 +4,16 @@ import {
   DeferredPaymentPayload,
   DeferredPaymentRequirements,
   DEFERRRED_SCHEME,
+  DeferredEscrowDepositAuthorization,
 } from "../../../types/verify/schemes/deferred";
-import { createPayment, createPaymentHeader } from "./client";
+import { createPayment } from "./client";
 import { decodePayment } from "./utils/paymentUtils";
 import { settle, verify } from "./facilitator";
 import { InMemoryVoucherStore } from "./store.mock";
 import { getPaymentRequirementsExtra } from "./server";
 import { Chain, Log, TransactionReceipt, Transport } from "viem";
+import { signPermit, signDepositAuthorizationInner } from "./sign";
+import { createPaymentHeader } from "../../../client";
 
 describe("Deferred Payment Integration Tests", () => {
   const sellerAddress = "0x1234567890123456789012345678901234567890";
@@ -345,7 +348,6 @@ describe("Deferred Payment Integration Tests", () => {
         {},
       );
       expect(voucherCollections.length).toBe(1);
-      console.log(voucherCollections);
       expect(voucherCollections[0]).toEqual({
         voucherId: decodedPaymentPayload.payload.voucher.id,
         voucherNonce: decodedPaymentPayload.payload.voucher.nonce,
@@ -353,6 +355,138 @@ describe("Deferred Payment Integration Tests", () => {
         transactionHash: settleResponse.transaction,
         collectedAmount: baseVoucher.valueAggregate, // mocked transaction data uses the base voucher valueAggregate
         asset: decodedPaymentPayload.payload.voucher.asset,
+        collectedAt: expect.any(Number),
+      });
+    });
+
+    it("should handle payment lifecycle with depositAuthorization", async () => {
+      // Initialize facilitator
+      const voucherStore = new InMemoryVoucherStore();
+      const facilitatorWallet = {
+        chain: { id: 84532 },
+        readContract: vi.fn(),
+        writeContract: vi.fn(),
+        waitForTransactionReceipt: vi.fn(),
+      } as unknown as SignerWallet<Chain, Transport>;
+
+      // Create buyer
+      const buyer = createSigner(
+        "base-sepolia",
+        "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+      );
+      const buyerAddress = buyer.account.address;
+
+      // Create deposit authorization (permit + depositAuth)
+      const now = Math.floor(Date.now() / 1000);
+      const oneWeek = 604800;
+      const depositAmount = "5000";
+
+      const permit = {
+        owner: buyerAddress,
+        spender: escrowAddress,
+        value: depositAmount,
+        nonce: 0,
+        deadline: now + oneWeek * 2,
+        domain: {
+          name: "USD Coin",
+          version: "2",
+        },
+      };
+
+      const permitSignature = await signPermit(buyer, permit, 84532, assetAddress);
+
+      const depositAuthInner = {
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        asset: assetAddress,
+        amount: depositAmount,
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000001",
+        expiry: now + oneWeek * 2,
+      };
+
+      const depositAuthSignature = await signDepositAuthorizationInner(
+        buyer,
+        depositAuthInner,
+        84532,
+        escrowAddress,
+      );
+
+      const depositAuthorization: DeferredEscrowDepositAuthorization = {
+        permit: {
+          ...permit,
+          signature: permitSignature.signature,
+        },
+        depositAuthorization: {
+          ...depositAuthInner,
+          signature: depositAuthSignature.signature,
+        },
+      };
+
+      // * Step 1: Payment requirements generation
+      const paymentRequirements = {
+        ...basePaymentRequirements,
+        extra: await getPaymentRequirementsExtra(
+          undefined,
+          buyerAddress,
+          sellerAddress,
+          escrowAddress,
+          (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
+        ),
+      } as DeferredPaymentRequirements;
+
+      expect(paymentRequirements.extra.type).toBe("new");
+
+      // * Step 2: Create payment with deposit authorization
+      const paymentPayload = (await createPayment(
+        buyer,
+        1,
+        paymentRequirements,
+      )) as DeferredPaymentPayload;
+
+      // Manually add depositAuthorization to the payload
+      const payloadWithAuth: DeferredPaymentPayload = {
+        ...paymentPayload,
+        payload: {
+          ...paymentPayload.payload,
+          depositAuthorization,
+        },
+      };
+
+      // * Step 3: Verify payment with deposit authorization
+      mockBlockchainInteractionsVerify(facilitatorWallet);
+      const verifyResponse = await verify(facilitatorWallet, payloadWithAuth, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(verifyResponse.isValid).toBe(true);
+
+      // * Step 4: Store voucher
+      voucherStore.storeVoucher({
+        ...payloadWithAuth.payload.voucher,
+        signature: payloadWithAuth.payload.signature,
+      });
+
+      // * Step 5: Settle with deposit authorization
+      mockBlockchainInteractionsSettle(facilitatorWallet);
+      const settleResponse = await settle(facilitatorWallet, payloadWithAuth, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(settleResponse.success).toBe(true);
+
+      const voucherCollections = await voucherStore.getVoucherCollections(
+        {
+          id: payloadWithAuth.payload.voucher.id,
+          nonce: payloadWithAuth.payload.voucher.nonce,
+        },
+        {},
+      );
+      expect(voucherCollections.length).toBe(1);
+      expect(voucherCollections[0]).toEqual({
+        voucherId: payloadWithAuth.payload.voucher.id,
+        voucherNonce: payloadWithAuth.payload.voucher.nonce,
+        chainId: payloadWithAuth.payload.voucher.chainId,
+        transactionHash: settleResponse.transaction,
+        collectedAmount: payloadWithAuth.payload.voucher.valueAggregate,
+        asset: payloadWithAuth.payload.voucher.asset,
         collectedAt: expect.any(Number),
       });
     });

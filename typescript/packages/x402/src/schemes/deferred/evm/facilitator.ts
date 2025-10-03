@@ -1,4 +1,13 @@
-import { Account, Address, Chain, Transport, Hex, parseEventLogs } from "viem";
+import {
+  Account,
+  parseSignature,
+  Address,
+  Chain,
+  Transport,
+  Hex,
+  parseEventLogs,
+  getAddress,
+} from "viem";
 import { ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import {
   PaymentPayload,
@@ -15,12 +24,14 @@ import {
   DeferredSchemeContextSchema,
 } from "../../../types/verify/schemes/deferred";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
+import { usdcABI } from "../../../types/shared/evm/erc20PermitABI";
 import {
   verifyPaymentRequirements,
   verifyVoucherSignature,
   verifyOnchainState,
   verifyVoucherContinuity,
   verifyVoucherAvailability,
+  verifyDepositAuthorization,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -139,6 +150,25 @@ export async function settle<transport extends Transport, chain extends Chain>(
       errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
       payer: paymentPayload.payload.voucher.buyer,
     };
+  }
+
+  if (paymentPayload.payload.depositAuthorization) {
+    const depositAuthorizationResponse = await depositWithAuthorization(
+      wallet,
+      paymentPayload.payload.voucher,
+      paymentPayload.payload.depositAuthorization,
+    );
+    if (!depositAuthorizationResponse.success) {
+      return {
+        success: false,
+        network: paymentPayload.network,
+        transaction: "",
+        errorReason:
+          depositAuthorizationResponse.errorReason ??
+          "invalid_deferred_evm_payload_deposit_authorization_failed",
+        payer: paymentPayload.payload.voucher.buyer,
+      };
+    }
   }
 
   const { voucher, signature, depositAuthorization } = paymentPayload.payload;
@@ -290,5 +320,120 @@ export async function settleVoucher<transport extends Transport, chain extends C
     success: true,
     transaction: tx,
     payer: voucher.buyer,
+  };
+}
+
+/**
+ * Deposits funds to the escrow using a deposit authorization
+ *
+ * @param wallet - The facilitator wallet that will submit the transaction
+ * @param voucher - The voucher that the deposit authorization is escrowing for
+ * @param depositAuthorization - The deposit authorization
+ * @returns A PaymentExecutionResponse containing the transaction status and hash
+ */
+export async function depositWithAuthorization<transport extends Transport, chain extends Chain>(
+  wallet: SignerWallet<chain, transport>,
+  voucher: DeferredEvmPayloadVoucher,
+  depositAuthorization: DeferredEscrowDepositAuthorization,
+): Promise<SettleResponse> {
+  // Verify the deposit authorization
+  const valid = await verifyDepositAuthorization(wallet, voucher, depositAuthorization);
+  if (!valid.isValid) {
+    return {
+      success: false,
+      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+      transaction: "",
+      payer: depositAuthorization.permit.owner,
+    };
+  }
+
+  const { permit, depositAuthorization: depositAuthorizationInnerWithSignature } =
+    depositAuthorization;
+  const { v, r, s, yParity } = parseSignature(permit.signature as `0x${string}`);
+  const { signature: depositAuthorizationSignature, ...depositAuthorizationInner } =
+    depositAuthorizationInnerWithSignature;
+
+  // Send permit() transaction
+  let permitTx = "";
+  try {
+    permitTx = await wallet.writeContract({
+      address: voucher.asset as Address,
+      abi: usdcABI,
+      functionName: "permit" as const,
+      args: [
+        getAddress(permit.owner),
+        getAddress(permit.spender),
+        BigInt(permit.value),
+        BigInt(permit.deadline),
+        Number(v ?? (yParity === 0 ? 27n : 28n)),
+        r,
+        s,
+      ],
+      chain: wallet.chain as Chain,
+    });
+  } catch (error) {
+    console.error(error);
+    return {
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: depositAuthorization.permit.owner,
+    };
+  }
+
+  const permitReceipt = await wallet.waitForTransactionReceipt({ hash: permitTx as `0x${string}` });
+  if (permitReceipt.status !== "success") {
+    return {
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: permitTx,
+      payer: depositAuthorization.permit.owner,
+    };
+  }
+
+  // Send depositWithAuthorization() transaction
+  let tx = "";
+  try {
+    tx = await wallet.writeContract({
+      address: voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "depositWithAuthorization" as const,
+      args: [
+        {
+          buyer: getAddress(depositAuthorizationInner.buyer),
+          seller: getAddress(depositAuthorizationInner.seller),
+          asset: getAddress(depositAuthorizationInner.asset),
+          amount: BigInt(depositAuthorizationInner.amount),
+          nonce: depositAuthorizationInner.nonce as `0x${string}`,
+          expiry: BigInt(depositAuthorizationInner.expiry),
+        },
+        depositAuthorizationSignature as `0x${string}`,
+      ],
+      chain: wallet.chain as Chain,
+    });
+  } catch (error) {
+    console.error(error);
+    return {
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: voucher.buyer,
+    };
+  }
+
+  const receipt = await wallet.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+  if (receipt.status !== "success") {
+    return {
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: tx,
+      payer: depositAuthorizationInner.buyer,
+    };
+  }
+
+  return {
+    success: true,
+    transaction: tx,
+    payer: depositAuthorization.permit.owner,
   };
 }

@@ -5,7 +5,6 @@ import {
   HexEncoded64ByteRegex,
   EvmMaxAtomicUnits,
   EvmTransactionHashRegex,
-  HexEncoded32ByteRegex,
 } from "../constants";
 import { hasMaxLength, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
@@ -53,6 +52,7 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_permit_nonce_invalid",
   "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
   "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
+  "invalid_deferred_evm_payload_deposit_authorization_failed",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -93,7 +93,7 @@ export const DeferredEscrowDepositAuthorizationPermitSchema = z.object({
   owner: z.string().regex(EvmAddressRegex),
   spender: z.string().regex(EvmAddressRegex),
   value: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
-  nonce: z.string().regex(HexEncoded32ByteRegex),
+  nonce: z.number().int().nonnegative(),
   deadline: z.number().int().nonnegative(),
   domain: z.object({
     name: z.string(),
@@ -119,7 +119,7 @@ export const DeferredEscrowDepositAuthorizationInnerSchema = z.object({
   seller: z.string().regex(EvmAddressRegex),
   asset: z.string().regex(EvmAddressRegex),
   amount: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
-  nonce: z.string().regex(HexEncoded32ByteRegex),
+  nonce: z.string().regex(HexEncoded64ByteRegex),
   expiry: z.number().int().nonnegative(),
 });
 export type DeferredEscrowDepositAuthorizationInner = z.infer<
