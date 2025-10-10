@@ -71,7 +71,7 @@ export function verifyPaymentRequirements(
     paymentRequirements.extra.type === "new"
       ? BigInt(paymentRequirements.maxAmountRequired)
       : BigInt(paymentRequirements.maxAmountRequired) +
-        BigInt(paymentRequirements.extra.voucher.valueAggregate);
+      BigInt(paymentRequirements.extra.voucher.valueAggregate);
   if (BigInt(paymentPayload.payload.voucher.valueAggregate) < requiredVoucherValueAggregate) {
     return {
       isValid: false,
@@ -455,7 +455,10 @@ export async function verifyOnchainState<
     };
   }
 
-  if (buyerAccount.balance + authorizationBalance < voucherOutstandingAmount) {
+  if (
+    buyerAccount.balance - buyerAccount.thawingAmount + authorizationBalance <
+    voucherOutstandingAmount
+  ) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",

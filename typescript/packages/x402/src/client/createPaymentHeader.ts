@@ -12,12 +12,14 @@ import { EXACT_SCHEME } from "../types/verify/schemes/exact";
  * @param client - The signer wallet instance used to create the payment header
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @param extraPayload - Extra payload to be included in the payment header creation, scheme dependent interpretation
  * @returns A promise that resolves to the created payment header string
  */
 export async function createPaymentHeader(
   client: Signer | MultiNetworkSigner,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
+  extraPayload?: Record<string, unknown>,
 ): Promise<string> {
   // exact scheme
   if (paymentRequirements.scheme === EXACT_SCHEME) {
@@ -62,7 +64,7 @@ export async function createPaymentHeader(
       throw new Error("Invalid evm wallet client provided");
     }
 
-    return await createPaymentHeaderDeferredEVM(evmClient, x402Version, paymentRequirements);
+    return await createPaymentHeaderDeferredEVM(evmClient, x402Version, paymentRequirements, extraPayload);
   }
 
   throw new Error("Unsupported scheme");

@@ -280,6 +280,33 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     return responseJson;
   }
 
+  /**
+   * Fetches the balance of an escrow account
+   *
+   * @param buyer - The buyer address
+   * @param seller - The seller address
+   * @param asset - The asset address
+   * @param escrow - The escrow address
+   * @param chainId - The chain ID
+   * @returns The balance of the escrow account
+   */
+  async function getEscrowAccountBalance(
+    buyer: string,
+    seller: string,
+    asset: string,
+    escrow: string,
+    chainId: number,
+  ): Promise<bigint> {
+    const response = await fetch(
+      `${facilitator.url}/deferred/accounts?buyer=${buyer}&seller=${seller}&asset=${asset}&escrow=${escrow}&chainId=${chainId}`,
+    );
+    const responseJson = (await response.json()) as { balance: string } | { error: string };
+    if ("error" in responseJson) {
+      throw new Error(responseJson.error);
+    }
+    return BigInt(responseJson.balance);
+  }
+
   return {
     getVoucher,
     getVouchers,
@@ -289,5 +316,6 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     verifyVoucher,
     settleVoucher,
     getVoucherCollections,
+    getEscrowAccountBalance,
   };
 }

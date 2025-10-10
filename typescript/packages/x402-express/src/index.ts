@@ -6,6 +6,7 @@ import {
   computeRoutePatterns,
   findMatchingPaymentRequirements,
   findMatchingRoute,
+  getNetworkId,
   getPaywallHtml,
   processPriceToAtomicAmount,
   toJsonSafe,
@@ -427,7 +428,7 @@ export function deferredPaymentMiddleware(
   payTo: Address,
   routes: RoutesConfig,
   escrow: Address,
-  facilitator?: FacilitatorConfig,
+  facilitator: FacilitatorConfig,
   voucherStore?: Pick<
     InstanceType<typeof deferred.evm.VoucherStore>,
     "getAvailableVoucher" | "storeVoucher"
@@ -497,6 +498,9 @@ export function deferredPaymentMiddleware(
           paymentBuyer as `0x${string}` | undefined,
           payTo,
           escrow,
+          getAddress(asset.address),
+          getNetworkId(network),
+          facilitator,
           voucherStore
             ? voucherStore.getAvailableVoucher
             : facilitatorVoucherStore.getAvailableVoucher,

@@ -185,6 +185,7 @@ export function withDeferredPaymentInterceptor(
           network,
           DEFERRRED_SCHEME,
         );
+        console.log(selectedPaymentRequirements);
         const selectedDeferredPaymentRequirements = DeferredPaymentRequirementsSchema.parse(
           selectedPaymentRequirements,
         );

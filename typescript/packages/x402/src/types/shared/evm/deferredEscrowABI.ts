@@ -264,6 +264,19 @@ export const deferredEscrowABI = [
   },
   {
     type: "function",
+    name: "getAccountBalance",
+    inputs: [
+      { name: "buyer", type: "address", internalType: "address" },
+      { name: "seller", type: "address", internalType: "address" },
+      { name: "asset", type: "address", internalType: "address" },
+      { name: "voucherIds", type: "bytes32[]", internalType: "bytes32[]" },
+      { name: "valueAggregates", type: "uint256[]", internalType: "uint256[]" },
+    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "getOutstandingAndCollectableAmount",
     inputs: [
       {

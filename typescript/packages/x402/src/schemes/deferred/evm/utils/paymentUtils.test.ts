@@ -247,4 +247,110 @@ describe("paymentUtils", () => {
       expect(decoded).toEqual(mixedCasePayload);
     });
   });
+
+  describe("depositAuthorization handling", () => {
+    const mockPaymentWithDepositAuth: DeferredPaymentPayload = {
+      ...mockPaymentPayload,
+      payload: {
+        ...mockPaymentPayload.payload,
+        depositAuthorization: {
+          permit: {
+            owner: buyerAddress,
+            spender: escrowAddress,
+            value: "1000000",
+            nonce: 0,
+            deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+            domain: {
+              name: "USD Coin",
+              version: "2",
+            },
+            signature:
+              "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c",
+          },
+          depositAuthorization: {
+            buyer: buyerAddress,
+            seller: sellerAddress,
+            asset: assetAddress,
+            amount: "1000000",
+            nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+            signature:
+              "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+          },
+        },
+      },
+    };
+
+    const mockPaymentWithDepositAuthNoPermit: DeferredPaymentPayload = {
+      ...mockPaymentPayload,
+      payload: {
+        ...mockPaymentPayload.payload,
+        depositAuthorization: {
+          depositAuthorization: {
+            buyer: buyerAddress,
+            seller: sellerAddress,
+            asset: assetAddress,
+            amount: "1000000",
+            nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+            signature:
+              "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+          },
+        },
+      },
+    };
+
+    it("should encode payment with depositAuthorization (with permit)", () => {
+      const encoded = encodePayment(mockPaymentWithDepositAuth);
+
+      expect(typeof encoded).toBe("string");
+      expect(encoded.length).toBeGreaterThan(0);
+    });
+
+    it("should decode payment with depositAuthorization (with permit)", () => {
+      const encoded = encodePayment(mockPaymentWithDepositAuth);
+      const decoded = decodePayment(encoded) as DeferredPaymentPayload;
+
+      expect(decoded).toEqual(mockPaymentWithDepositAuth);
+      expect(decoded.payload.depositAuthorization).toBeDefined();
+      expect(decoded.payload.depositAuthorization?.permit).toBeDefined();
+      expect(decoded.payload.depositAuthorization?.depositAuthorization).toBeDefined();
+    });
+
+    it("should encode payment with depositAuthorization (without permit)", () => {
+      const encoded = encodePayment(mockPaymentWithDepositAuthNoPermit);
+
+      expect(typeof encoded).toBe("string");
+      expect(encoded.length).toBeGreaterThan(0);
+    });
+
+    it("should decode payment with depositAuthorization (without permit)", () => {
+      const encoded = encodePayment(mockPaymentWithDepositAuthNoPermit);
+      const decoded = decodePayment(encoded) as DeferredPaymentPayload;
+
+      expect(decoded).toEqual(mockPaymentWithDepositAuthNoPermit);
+      expect(decoded.payload.depositAuthorization).toBeDefined();
+      expect(decoded.payload.depositAuthorization?.permit).toBeUndefined();
+      expect(decoded.payload.depositAuthorization?.depositAuthorization).toBeDefined();
+    });
+
+    it("should round-trip payment with depositAuthorization", () => {
+      let current = mockPaymentWithDepositAuth;
+
+      for (let i = 0; i < 3; i++) {
+        const encoded = encodePayment(current);
+        current = decodePayment(encoded) as DeferredPaymentPayload;
+      }
+
+      expect(current).toEqual(mockPaymentWithDepositAuth);
+    });
+
+    it("should handle payment without depositAuthorization", () => {
+      const encoded = encodePayment(mockPaymentPayload);
+      const decoded = decodePayment(encoded) as DeferredPaymentPayload;
+
+      expect(decoded.payload.depositAuthorization).toBeUndefined();
+      expect(decoded).toEqual(mockPaymentPayload);
+    });
+  });
 });

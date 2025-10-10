@@ -3,6 +3,7 @@ import { getNetworkId } from "../../../shared/network";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
 import {
+  DeferredEscrowDepositAuthorizationSchema,
   DeferredEvmPayloadVoucher,
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
   DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
@@ -22,12 +23,14 @@ const EXPIRY_TIME = 60 * 60 * 24 * 30; // 30 days
  * @param buyer - The sender's address from which the payment will be made
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @param extraPayload - Extra payload to be included in the payment header creation
  * @returns An unsigned payment payload containing authorization details
  */
 export async function preparePaymentHeader(
   buyer: Address,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
+  extraPayload?: Record<string, unknown>,
 ): Promise<UnsignedDeferredPaymentPayload> {
   const deferredPaymentRequirements = DeferredPaymentRequirementsSchema.parse(paymentRequirements);
 
@@ -36,6 +39,10 @@ export async function preparePaymentHeader(
       ? createNewVoucher(buyer, deferredPaymentRequirements)
       : await aggregateVoucher(buyer, deferredPaymentRequirements);
 
+  const depositAuthorization = extraPayload
+    ? DeferredEscrowDepositAuthorizationSchema.parse(extraPayload)
+    : undefined;
+
   return {
     x402Version,
     scheme: DEFERRRED_SCHEME,
@@ -43,6 +50,7 @@ export async function preparePaymentHeader(
     payload: {
       signature: undefined,
       voucher: voucher,
+      ...(depositAuthorization && { depositAuthorization }),
     },
   } as const satisfies UnsignedDeferredPaymentPayload;
 }
@@ -163,15 +171,22 @@ export async function signPaymentHeader<transport extends Transport, chain exten
  * @param client - The signer wallet instance used to create and sign the payment
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @param extraPayload - Extra payload to be included in the payment header creation
  * @returns A promise that resolves to the complete signed payment payload
  */
 export async function createPayment<transport extends Transport, chain extends Chain>(
   client: SignerWallet<chain, transport> | LocalAccount,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
+  extraPayload?: Record<string, unknown>,
 ): Promise<PaymentPayload> {
   const from = isSignerWallet(client) ? client.account!.address : client.address;
-  const unsignedPaymentHeader = await preparePaymentHeader(from, x402Version, paymentRequirements);
+  const unsignedPaymentHeader = await preparePaymentHeader(
+    from,
+    x402Version,
+    paymentRequirements,
+    extraPayload,
+  );
   return signPaymentHeader(client, unsignedPaymentHeader);
 }
 
@@ -181,13 +196,15 @@ export async function createPayment<transport extends Transport, chain extends C
  * @param client - The signer wallet instance used to create the payment header
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @param extraPayload - Extra payload to be included in the payment header creation
  * @returns A promise that resolves to the encoded payment header string
  */
 export async function createPaymentHeader(
   client: SignerWallet | LocalAccount,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
+  extraPayload?: Record<string, unknown>,
 ): Promise<string> {
-  const payment = await createPayment(client, x402Version, paymentRequirements);
+  const payment = await createPayment(client, x402Version, paymentRequirements, extraPayload);
   return encodePayment(payment);
 }

@@ -69,6 +69,9 @@ export class InMemoryVoucherStore extends VoucherStore {
    * @param query - The query options
    * @param query.buyer - The buyer's address
    * @param query.seller - The seller's address
+   * @param query.asset - The asset's address
+   * @param query.escrow - The escrow's address
+   * @param query.chainId - The chain ID
    * @param query.latest - Whether to return only the latest voucher per series
    * @param pagination - The pagination options
    * @param pagination.limit - The maximum number of vouchers to return
@@ -79,6 +82,9 @@ export class InMemoryVoucherStore extends VoucherStore {
     query: {
       buyer?: string | undefined;
       seller?: string | undefined;
+      asset?: string | undefined;
+      escrow?: string | undefined;
+      chainId?: number | undefined;
       latest?: boolean | undefined;
     },
     pagination: {
@@ -87,12 +93,15 @@ export class InMemoryVoucherStore extends VoucherStore {
     },
   ): Promise<Array<DeferredEvmPayloadSignedVoucher>> {
     const { limit = 100, offset = 0 } = pagination;
-    const { buyer, latest, seller } = query;
+    const { buyer, latest, seller, asset, escrow, chainId } = query;
 
     // Filter vouchers by buyer and/or seller
     let filteredVouchers = this.vouchers.filter(voucher => {
       if (buyer && voucher.buyer !== buyer) return false;
       if (seller && voucher.seller !== seller) return false;
+      if (asset && voucher.asset !== asset) return false;
+      if (escrow && voucher.escrow !== escrow) return false;
+      if (chainId && voucher.chainId !== chainId) return false;
       return true;
     });
 

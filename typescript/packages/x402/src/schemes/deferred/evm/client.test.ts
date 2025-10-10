@@ -112,6 +112,91 @@ describe("preparePaymentHeader: new voucher", () => {
     const result = await preparePaymentHeader(buyerAddress, 2, mockPaymentRequirements);
     expect(result.x402Version).toBe(2);
   });
+
+  it("should include depositAuthorization in payload when provided in extraPayload", async () => {
+    const mockDepositAuthorization = {
+      permit: {
+        owner: buyerAddress,
+        spender: escrowAddress,
+        value: "1000000",
+        nonce: 0,
+        deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        domain: {
+          name: "USD Coin",
+          version: "2",
+        },
+        signature:
+          "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c",
+      },
+      depositAuthorization: {
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        asset: assetAddress,
+        amount: "1000000",
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        signature:
+          "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+      },
+    };
+
+    const paymentHeader = await preparePaymentHeader(
+      buyerAddress,
+      1,
+      mockPaymentRequirements,
+      mockDepositAuthorization,
+    );
+
+    expect(paymentHeader.payload.depositAuthorization).toEqual(mockDepositAuthorization);
+    expect(paymentHeader.payload.depositAuthorization?.permit).toBeDefined();
+  });
+
+  it("should include depositAuthorization without permit when permit is not provided", async () => {
+    const mockDepositAuthorizationNoPermit = {
+      depositAuthorization: {
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        asset: assetAddress,
+        amount: "1000000",
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        signature:
+          "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+      },
+    };
+
+    const paymentHeader = await preparePaymentHeader(
+      buyerAddress,
+      1,
+      mockPaymentRequirements,
+      mockDepositAuthorizationNoPermit,
+    );
+
+    expect(paymentHeader.payload.depositAuthorization).toEqual(mockDepositAuthorizationNoPermit);
+    expect(paymentHeader.payload.depositAuthorization?.permit).toBeUndefined();
+  });
+
+  it("should not include depositAuthorization when extraPayload is not provided", async () => {
+    const paymentHeader = await preparePaymentHeader(buyerAddress, 1, mockPaymentRequirements);
+
+    expect(paymentHeader.payload.depositAuthorization).toBeUndefined();
+  });
+
+  it("should throw error when depositAuthorization in extraPayload is invalid", async () => {
+    const invalidDepositAuthorization = {
+      permit: {
+        owner: "invalid-address", // Invalid address format
+        spender: escrowAddress,
+      },
+      depositAuthorization: {
+        buyer: buyerAddress,
+      },
+    };
+
+    await expect(
+      preparePaymentHeader(buyerAddress, 1, mockPaymentRequirements, invalidDepositAuthorization),
+    ).rejects.toThrow();
+  });
 });
 
 describe("createNewVoucher", () => {

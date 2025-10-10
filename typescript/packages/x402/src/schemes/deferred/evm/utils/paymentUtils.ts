@@ -13,13 +13,16 @@ export function encodePayment(payment: PaymentPayload): string {
   const safe = {
     ...deferredPayment,
     payload: {
-      ...payment.payload,
+      signature: deferredPayment.payload.signature,
       voucher: Object.fromEntries(
         Object.entries(deferredPayment.payload.voucher).map(([key, value]) => [
           key,
           typeof value === "bigint" ? (value as bigint).toString() : value,
         ]),
       ),
+      ...(deferredPayment.payload.depositAuthorization && {
+        depositAuthorization: deferredPayment.payload.depositAuthorization,
+      }),
     },
   };
   return safeBase64Encode(JSON.stringify(safe));
@@ -42,6 +45,9 @@ export function decodePayment(payment: string): PaymentPayload {
       voucher: {
         ...parsed.payload.voucher,
       },
+      ...(parsed.payload.depositAuthorization && {
+        depositAuthorization: parsed.payload.depositAuthorization,
+      }),
     },
   };
 

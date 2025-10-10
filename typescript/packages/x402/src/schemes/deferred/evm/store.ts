@@ -79,6 +79,9 @@ export abstract class VoucherStore {
    * Query Options:
    * - buyer: Filter by buyer's address
    * - seller: Filter by seller's address
+   * - asset: Filter by asset's address
+   * - escrow: Filter by escrow's address
+   * - chainId: Filter by chain ID
    * - latest: If true, return only the highest nonce voucher per series
    *
    * Behavior:
@@ -105,6 +108,9 @@ export abstract class VoucherStore {
     query: {
       buyer?: string;
       seller?: string;
+      asset?: string;
+      escrow?: string;
+      chainId?: number;
       latest?: boolean;
     },
     pagination: {

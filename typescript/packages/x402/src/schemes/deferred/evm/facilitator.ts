@@ -441,3 +441,67 @@ export async function depositWithAuthorization<transport extends Transport, chai
     payer: depositAuthorization.depositAuthorization.buyer,
   };
 }
+
+/**
+ * Gets the balance of an escrow account defined by a buyer, seller, and asset on a target escrow contract
+ * Note that it will consider offchain outstanding vouchers when calculating the balance
+ *
+ * @param client - The client to use for retrieving the onchain balance
+ * @param buyer - The buyer address
+ * @param seller - The seller address
+ * @param asset - The asset address
+ * @param escrow - The escrow address
+ * @param chainId - The chain ID
+ * @param voucherStore - The voucher store to use to get outstanding vouchers
+ * @returns The balance of the buyer for the given asset
+ */
+export async function getEscrowAccountBalance<
+  transport extends Transport,
+  chain extends Chain,
+  account extends Account | undefined,
+>(
+  client: ConnectedClient<transport, chain, account>,
+  buyer: Address,
+  seller: Address,
+  asset: Address,
+  escrow: Address,
+  chainId: number,
+  voucherStore: VoucherStore,
+): Promise<bigint | { error: string }> {
+  const outstandingVouchers = await voucherStore.getVouchers(
+    {
+      buyer,
+      seller,
+      asset,
+      escrow,
+      chainId,
+      latest: true,
+    },
+    {
+      limit: 1_000, // TODO: pagination?
+    },
+  );
+
+  let buyerAccountBalance: bigint;
+  try {
+    buyerAccountBalance = await client.readContract({
+      address: escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "getAccountBalance",
+      args: [
+        buyer as Address,
+        seller as Address,
+        asset as Address,
+        outstandingVouchers.map(voucher => voucher.id as `0x${string}`),
+        outstandingVouchers.map(voucher => BigInt(voucher.valueAggregate)),
+      ],
+    });
+  } catch (error) {
+    console.log(error);
+    return {
+      error: "invalid_deferred_evm_contract_call_failed_account",
+    };
+  }
+
+  return buyerAccountBalance;
+}

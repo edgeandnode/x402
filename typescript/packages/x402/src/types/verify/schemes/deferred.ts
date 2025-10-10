@@ -170,9 +170,19 @@ export const UnsignedDeferredPaymentPayloadSchema = BasePaymentPayloadSchema.ext
 });
 export type UnsignedDeferredPaymentPayload = z.infer<typeof UnsignedDeferredPaymentPayloadSchema>;
 
+// x402DeferredEvmPaymentRequirementsExtraAccountBalance
+export const DeferredEvmPaymentRequirementsExtraAccountBalanceSchema = z.object({
+  balance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  facilitator: z.string(),
+});
+export type DeferredEvmPaymentRequirementsExtraAccountBalance = z.infer<
+  typeof DeferredEvmPaymentRequirementsExtraAccountBalanceSchema
+>;
+
 // x402DeferredEvmPaymentRequirementsExtraNewVoucher
 export const DeferredEvmPaymentRequirementsExtraNewVoucherSchema = z.object({
   type: z.literal("new"),
+  balance: DeferredEvmPaymentRequirementsExtraAccountBalanceSchema.optional(),
   voucher: DeferredEvmPayloadVoucherSchema.pick({ id: true, escrow: true }),
 });
 export type DeferredEvmPaymentRequirementsExtraNewVoucher = z.infer<
@@ -182,6 +192,7 @@ export type DeferredEvmPaymentRequirementsExtraNewVoucher = z.infer<
 // x402DeferredEvmPaymentRequirementsExtraAggregationVoucher
 export const DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema = z.object({
   type: z.literal("aggregation"),
+  balance: DeferredEvmPaymentRequirementsExtraAccountBalanceSchema.optional(),
   signature: z.string().regex(EvmSignatureRegex),
   voucher: DeferredEvmPayloadVoucherSchema,
 });
