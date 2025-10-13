@@ -1,9 +1,12 @@
-import { Address, Chain, getAddress, Hex, LocalAccount, Transport } from "viem";
+import { Address, Chain, Client, getAddress, Hex, LocalAccount, toHex, Transport } from "viem";
 import { getNetworkId } from "../../../shared/network";
 import { isSignerWallet, SignerWallet } from "../../../types/shared/evm";
 import { PaymentPayload, PaymentRequirements, UnsignedPaymentPayload } from "../../../types/verify";
 import {
+  DeferredEscrowDepositAuthorization,
+  DeferredEscrowDepositAuthorizationConfig,
   DeferredEscrowDepositAuthorizationSchema,
+  DeferredEscrowDepositAuthorizationSignedPermit,
   DeferredEvmPayloadVoucher,
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
   DeferredEvmPaymentRequirementsExtraNewVoucherSchema,
@@ -12,8 +15,10 @@ import {
   UnsignedDeferredPaymentPayload,
   UnsignedDeferredPaymentPayloadSchema,
 } from "../../../types/verify/schemes/deferred";
-import { signVoucher, verifyVoucher } from "./sign";
+import { signPermit, signDepositAuthorizationInner, signVoucher, verifyVoucher } from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
+import { getUsdcChainConfigForChain } from "../../../shared/evm";
+import { randomBytes } from "node:crypto";
 
 const EXPIRY_TIME = 60 * 60 * 24 * 30; // 30 days
 
@@ -207,4 +212,114 @@ export async function createPaymentHeader(
 ): Promise<string> {
   const payment = await createPayment(client, x402Version, paymentRequirements, extraPayload);
   return encodePayment(payment);
+}
+
+/**
+ * Creates the payment extra payload for deferred scheme with deposit with authorization flow.
+ *
+ * __Note__: This implementation requires the buyer to trust the seller provided balance to decide if they deposit additional
+ * funds to the escrow. A malicious seller could manipulate the value and force additional deposits from the buyer, those funds
+ * would not be at risk as they could be withdrawn, however it would be a form of abuse.
+ * TODO: We could improve this by having this client-side function verify the balance themselves, that requires however the client
+ * to make a direct call to the facilitator.
+ *
+ * @param client - The signer wallet instance used to create the payment extra payload
+ * @param paymentRequirements - The payment requirements containing scheme and network information
+ * @param depositConfigs - The auto deposit configurations to use for the deposit with authorization flow
+ * @returns The extra payload or undefined
+ */
+export async function createPaymentExtraPayload(
+  client: SignerWallet | LocalAccount,
+  paymentRequirements: PaymentRequirements,
+  depositConfigs: DeferredEscrowDepositAuthorizationConfig[],
+): Promise<DeferredEscrowDepositAuthorization | undefined> {
+  const { network, asset, extra, maxAmountRequired } =
+    DeferredPaymentRequirementsSchema.parse(paymentRequirements);
+  const buyer = (client as LocalAccount).address || (client as Client).account?.address;
+
+  // No account info, no deposit
+  if (extra.account === undefined) {
+    return;
+  }
+
+  let depositConfig = depositConfigs.find(config => getAddress(config.asset) === getAddress(asset));
+
+  if (depositConfig === undefined) {
+    const chainId = getNetworkId(network);
+    const usdc = getUsdcChainConfigForChain(chainId);
+
+    // No matching asset, no deposit
+    if (usdc === undefined) {
+      return;
+    }
+
+    depositConfig = {
+      asset: usdc.usdcAddress,
+      assetDomain: {
+        name: usdc.usdcName,
+        version: "2", // TODO: use getVersion
+      },
+      threshold: "10000", // 0.01 USDC
+      amount: "1000000", // 1 USDC
+    };
+  }
+
+  // Enough balance, no deposit
+  if (
+    BigInt(extra.account.balance) >=
+    BigInt(depositConfig.threshold) + BigInt(maxAmountRequired)
+  ) {
+    return;
+  }
+
+  // Build ERC20 permit if needed
+  let signedErc20Permit: DeferredEscrowDepositAuthorizationSignedPermit | undefined;
+  if (BigInt(extra.account.assetAllowance) < BigInt(depositConfig.amount)) {
+    const erc20Permit = {
+      nonce: extra.account.assetPermitNonce,
+      value: depositConfig.amount,
+      domain: {
+        name: depositConfig.assetDomain.name,
+        version: depositConfig.assetDomain.version,
+      },
+      owner: getAddress(buyer),
+      spender: getAddress(extra.voucher.escrow),
+      deadline: Math.floor(Date.now() / 1000) + EXPIRY_TIME,
+    };
+    const erc20PermitSignature = await signPermit(
+      client,
+      erc20Permit,
+      getNetworkId(network),
+      getAddress(asset),
+    );
+    signedErc20Permit = {
+      ...erc20Permit,
+      signature: erc20PermitSignature.signature,
+    };
+  }
+
+  // Build deposit authorization
+  const depositAuthorization = {
+    buyer: getAddress(buyer),
+    seller: getAddress(paymentRequirements.payTo),
+    asset: getAddress(asset),
+    amount: depositConfig.amount,
+    nonce: toHex(randomBytes(32)),
+    expiry: Math.floor(Date.now() / 1000) + EXPIRY_TIME,
+  };
+
+  const depositAuthorizationSignature = await signDepositAuthorizationInner(
+    client,
+    depositAuthorization,
+    getNetworkId(network),
+    getAddress(extra.voucher.escrow),
+  );
+
+  return {
+    ...(signedErc20Permit && { permit: signedErc20Permit }),
+    depositAuthorization: {
+      ...depositAuthorization,
+      signature: depositAuthorizationSignature.signature,
+    },
+  };
 }

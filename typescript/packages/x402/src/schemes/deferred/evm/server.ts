@@ -35,10 +35,10 @@ export async function getPaymentRequirementsExtra(
     seller: string,
   ) => Promise<DeferredEvmPayloadSignedVoucher | null>,
 ): Promise<PaymentRequirementsExtra> {
-  const { getEscrowAccountBalance } = useDeferredFacilitator(facilitator);
+  const { getEscrowAccountDetails } = useDeferredFacilitator(facilitator);
 
   let buyer: Address;
-  const newVoucherExtra = {
+  const newVoucherExtra: PaymentRequirementsExtra = {
     type: "new" as const,
     voucher: {
       id: generateVoucherId(),
@@ -63,27 +63,40 @@ export async function getPaymentRequirementsExtra(
     buyer = xBuyerHeader!; // This is safe due to the previous early return
   }
 
-  // Retrieve balance from facilitator -- if it fails return 0n which means the depositWithAuth flow will not be triggered
-  let balance = 0n;
+  // Retrieve account details from facilitator
+  let balance = "";
+  let assetAllowance = "";
+  let assetPermitNonce = "";
+  let success = false;
   try {
-    balance = await getEscrowAccountBalance(buyer, seller, asset, escrow, chainId);
+    const response = await getEscrowAccountDetails(buyer, seller, asset, escrow, chainId);
+    if (!("error" in response)) {
+      success = true;
+      ({ balance, assetAllowance, assetPermitNonce } = response);
+    }
   } catch (error) {
     console.error(error);
   }
+
+  const account = {
+    balance,
+    assetAllowance,
+    assetPermitNonce,
+    facilitator: facilitator.url,
+  };
 
   const previousVoucher = await getAvailableVoucher(buyer, seller);
   if (previousVoucher) {
     return {
       type: "aggregation" as const,
-      balance: {
-        balance: balance.toString(),
-        facilitator: facilitator.url,
-      },
+      ...(success ? { account } : {}),
       signature: previousVoucher.signature,
       voucher: {
         ...previousVoucher,
       },
     };
   }
+
+  if (success) newVoucherExtra.account = account;
   return newVoucherExtra;
 }

@@ -5,6 +5,7 @@ import {
   PaymentRequirementsSelector,
   selectPaymentRequirements,
 } from "x402/client";
+import { deferred } from "x402/schemes";
 import {
   Signer,
   MultiNetworkSigner,
@@ -18,6 +19,7 @@ import {
   EXACT_SCHEME,
   PaymentRequirements,
   PaymentRequirementsSchema,
+  DeferredEscrowDepositAuthorizationConfig,
 } from "x402/types";
 
 /**
@@ -119,7 +121,12 @@ export function withPaymentInterceptor(
  *
  * @param axiosClient - The Axios instance to add the interceptor to
  * @param walletClient - A wallet client that can sign transactions and create payment headers
+ * @param autoDepositConfigs - A list of deposit configurations to use for the deferred payment protocol deposit with authorization flow
+ *   - asset: The asset to deposit
+ *   - threshold: The threshold at which to deposit
+ *   - depositAmount: The amount to deposit
  * @param paymentRequirementsSelector - A function that selects the payment requirements from the response
+ *
  * @returns The modified Axios instance with the payment interceptor
  *
  * @example
@@ -136,6 +143,7 @@ export function withPaymentInterceptor(
 export function withDeferredPaymentInterceptor(
   axiosClient: AxiosInstance,
   walletClient: Signer | MultiNetworkSigner,
+  autoDepositConfigs: DeferredEscrowDepositAuthorizationConfig[] = [],
   paymentRequirementsSelector: PaymentRequirementsSelector = selectPaymentRequirements,
 ) {
   // intercept the request to send a `X-PAYMENT-BUYER` header with each request
@@ -185,15 +193,19 @@ export function withDeferredPaymentInterceptor(
           network,
           DEFERRRED_SCHEME,
         );
-        console.log(selectedPaymentRequirements);
         const selectedDeferredPaymentRequirements = DeferredPaymentRequirementsSchema.parse(
           selectedPaymentRequirements,
         );
-
+        const extraPayload = await deferred.evm.createPaymentExtraPayload(
+          walletClient as typeof evm.EvmSigner,
+          selectedDeferredPaymentRequirements,
+          autoDepositConfigs,
+        );
         const paymentHeader = await createPaymentHeader(
           walletClient,
           x402Version,
           selectedDeferredPaymentRequirements,
+          extraPayload,
         );
 
         (originalConfig as { __is402Retry?: boolean }).__is402Retry = true;

@@ -17,6 +17,9 @@ import {
   VerifyResponse,
 } from "../../../types/verify";
 import {
+  DeferredAccountDetailsResponse,
+  DeferredDepositWithAuthorizationResponse,
+  DeferredErrorResponse,
   DeferredEscrowDepositAuthorization,
   DeferredEvmPayloadVoucher,
   DeferredPaymentPayloadSchema,
@@ -335,7 +338,7 @@ export async function depositWithAuthorization<transport extends Transport, chai
   wallet: SignerWallet<chain, transport>,
   voucher: DeferredEvmPayloadVoucher,
   depositAuthorization: DeferredEscrowDepositAuthorization,
-): Promise<SettleResponse> {
+): Promise<DeferredDepositWithAuthorizationResponse> {
   // Verify the deposit authorization
   const valid = await verifyDepositAuthorization(wallet, voucher, depositAuthorization);
   if (!valid.isValid) {
@@ -443,7 +446,7 @@ export async function depositWithAuthorization<transport extends Transport, chai
 }
 
 /**
- * Gets the balance of an escrow account defined by a buyer, seller, and asset on a target escrow contract
+ * Gets the details of an escrow account defined by a buyer, seller, and asset on a target escrow contract
  * Note that it will consider offchain outstanding vouchers when calculating the balance
  *
  * @param client - The client to use for retrieving the onchain balance
@@ -455,7 +458,7 @@ export async function depositWithAuthorization<transport extends Transport, chai
  * @param voucherStore - The voucher store to use to get outstanding vouchers
  * @returns The balance of the buyer for the given asset
  */
-export async function getEscrowAccountBalance<
+export async function getEscrowAccountDetails<
   transport extends Transport,
   chain extends Chain,
   account extends Account | undefined,
@@ -467,7 +470,7 @@ export async function getEscrowAccountBalance<
   escrow: Address,
   chainId: number,
   voucherStore: VoucherStore,
-): Promise<bigint | { error: string }> {
+): Promise<DeferredAccountDetailsResponse | DeferredErrorResponse> {
   const outstandingVouchers = await voucherStore.getVouchers(
     {
       buyer,
@@ -482,12 +485,14 @@ export async function getEscrowAccountBalance<
     },
   );
 
-  let buyerAccountBalance: bigint;
+  let balance: bigint;
+  let allowance: bigint;
+  let nonce: bigint;
   try {
-    buyerAccountBalance = await client.readContract({
+    [balance, allowance, nonce] = await client.readContract({
       address: escrow as Address,
       abi: deferredEscrowABI,
-      functionName: "getAccountBalance",
+      functionName: "getAccountDetails",
       args: [
         buyer as Address,
         seller as Address,
@@ -499,9 +504,13 @@ export async function getEscrowAccountBalance<
   } catch (error) {
     console.log(error);
     return {
-      error: "invalid_deferred_evm_contract_call_failed_account",
+      error: "invalid_deferred_evm_contract_call_failed_account_details",
     };
   }
 
-  return buyerAccountBalance;
+  return {
+    balance: balance.toString(),
+    assetAllowance: allowance.toString(),
+    assetPermitNonce: nonce.toString(),
+  };
 }

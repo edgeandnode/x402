@@ -1,5 +1,6 @@
 import { toJsonSafe } from "../shared/json";
 import {
+  DeferredAccountDetailsResponse,
   DeferredErrorResponse,
   DeferredVoucherCollectionsResponse,
   DeferredVoucherResponse,
@@ -281,7 +282,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
   }
 
   /**
-   * Fetches the balance of an escrow account
+   * Fetches the details of an escrow account for a given buyer, seller, and asset
    *
    * @param buyer - The buyer address
    * @param seller - The seller address
@@ -290,21 +291,23 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
    * @param chainId - The chain ID
    * @returns The balance of the escrow account
    */
-  async function getEscrowAccountBalance(
+  async function getEscrowAccountDetails(
     buyer: string,
     seller: string,
     asset: string,
     escrow: string,
     chainId: number,
-  ): Promise<bigint> {
+  ): Promise<DeferredAccountDetailsResponse | DeferredErrorResponse> {
     const response = await fetch(
       `${facilitator.url}/deferred/accounts?buyer=${buyer}&seller=${seller}&asset=${asset}&escrow=${escrow}&chainId=${chainId}`,
     );
-    const responseJson = (await response.json()) as { balance: string } | { error: string };
+    const responseJson = (await response.json()) as
+      | DeferredAccountDetailsResponse
+      | DeferredErrorResponse;
     if ("error" in responseJson) {
       throw new Error(responseJson.error);
     }
-    return BigInt(responseJson.balance);
+    return responseJson;
   }
 
   return {
@@ -316,6 +319,6 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     verifyVoucher,
     settleVoucher,
     getVoucherCollections,
-    getEscrowAccountBalance,
+    getEscrowAccountDetails,
   };
 }

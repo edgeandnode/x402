@@ -6,9 +6,11 @@ import {
   EvmMaxAtomicUnits,
   EvmTransactionHashRegex,
 } from "../constants";
-import { hasMaxLength, isInteger } from "../refiners";
+import { hasMaxLength, isBigInt, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
 import { VoucherStore } from "../../../schemes/deferred/evm/store";
+import { ErrorReasons } from "../x402Specs";
+import { EvmOrSvmAddress, MixedAddressRegex, NetworkSchema } from "../..";
 
 export const DEFERRRED_SCHEME = "deferred";
 
@@ -95,7 +97,7 @@ export const DeferredEscrowDepositAuthorizationPermitSchema = z.object({
   owner: z.string().regex(EvmAddressRegex),
   spender: z.string().regex(EvmAddressRegex),
   value: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
-  nonce: z.number().int().nonnegative(),
+  nonce: z.string().refine(isBigInt),
   deadline: z.number().int().nonnegative(),
   domain: z.object({
     name: z.string(),
@@ -146,6 +148,20 @@ export type DeferredEscrowDepositAuthorization = z.infer<
   typeof DeferredEscrowDepositAuthorizationSchema
 >;
 
+// x402DeferredEscrowDepositAuthorizationConfig
+export const DeferredEscrowDepositAuthorizationConfigSchema = z.object({
+  asset: z.string().regex(EvmAddressRegex),
+  assetDomain: z.object({
+    name: z.string(),
+    version: z.string(),
+  }),
+  threshold: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  amount: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+});
+export type DeferredEscrowDepositAuthorizationConfig = z.infer<
+  typeof DeferredEscrowDepositAuthorizationConfigSchema
+>;
+
 // x402DeferredEvmPayload
 export const DeferredEvmPayloadSchema = z.object({
   signature: z.string().regex(EvmSignatureRegex),
@@ -171,18 +187,20 @@ export const UnsignedDeferredPaymentPayloadSchema = BasePaymentPayloadSchema.ext
 export type UnsignedDeferredPaymentPayload = z.infer<typeof UnsignedDeferredPaymentPayloadSchema>;
 
 // x402DeferredEvmPaymentRequirementsExtraAccountBalance
-export const DeferredEvmPaymentRequirementsExtraAccountBalanceSchema = z.object({
+export const DeferredEvmPaymentRequirementsExtraAccountDetailsSchema = z.object({
   balance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  assetAllowance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  assetPermitNonce: z.string().refine(isBigInt),
   facilitator: z.string(),
 });
-export type DeferredEvmPaymentRequirementsExtraAccountBalance = z.infer<
-  typeof DeferredEvmPaymentRequirementsExtraAccountBalanceSchema
+export type DeferredEvmPaymentRequirementsExtraAccountDetails = z.infer<
+  typeof DeferredEvmPaymentRequirementsExtraAccountDetailsSchema
 >;
 
 // x402DeferredEvmPaymentRequirementsExtraNewVoucher
 export const DeferredEvmPaymentRequirementsExtraNewVoucherSchema = z.object({
   type: z.literal("new"),
-  balance: DeferredEvmPaymentRequirementsExtraAccountBalanceSchema.optional(),
+  account: DeferredEvmPaymentRequirementsExtraAccountDetailsSchema.optional(),
   voucher: DeferredEvmPayloadVoucherSchema.pick({ id: true, escrow: true }),
 });
 export type DeferredEvmPaymentRequirementsExtraNewVoucher = z.infer<
@@ -192,7 +210,7 @@ export type DeferredEvmPaymentRequirementsExtraNewVoucher = z.infer<
 // x402DeferredEvmPaymentRequirementsExtraAggregationVoucher
 export const DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema = z.object({
   type: z.literal("aggregation"),
-  balance: DeferredEvmPaymentRequirementsExtraAccountBalanceSchema.optional(),
+  account: DeferredEvmPaymentRequirementsExtraAccountDetailsSchema.optional(),
   signature: z.string().regex(EvmSignatureRegex),
   voucher: DeferredEvmPayloadVoucherSchema,
 });
@@ -273,3 +291,23 @@ export const DeferredVoucherCollectionsResponseSchema = z.union([
 export type DeferredVoucherCollectionsResponse = z.infer<
   typeof DeferredVoucherCollectionsResponseSchema
 >;
+
+// x402DeferredDepositWithAuthorizationResponse
+export const DeferredDepositWithAuthorizationResponseSchema = z.object({
+  success: z.boolean(),
+  errorReason: z.enum(ErrorReasons).optional(),
+  payer: EvmOrSvmAddress.optional(),
+  transaction: z.string().regex(MixedAddressRegex),
+  network: NetworkSchema.optional(),
+});
+export type DeferredDepositWithAuthorizationResponse = z.infer<
+  typeof DeferredDepositWithAuthorizationResponseSchema
+>;
+
+// x402DeferredAccountDetailsResponse
+export const DeferredAccountDetailsResponseSchema = z.object({
+  balance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  assetAllowance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
+  assetPermitNonce: z.string().refine(isBigInt),
+});
+export type DeferredAccountDetailsResponse = z.infer<typeof DeferredAccountDetailsResponseSchema>;

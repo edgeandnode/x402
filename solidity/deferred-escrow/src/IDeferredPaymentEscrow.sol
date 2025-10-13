@@ -386,22 +386,27 @@ interface IDeferredPaymentEscrow {
   function getAccount(address buyer, address seller, address asset) external view returns (EscrowAccount memory);
 
   /**
-   * @notice Get the balance of an escrow account for a specific buyer-seller-asset combination
-   * deducting oustanding amounts for the given vouchers
+   * @notice Gets buyer account details for a specific buyer-seller-asset combination.
+   * This returns escrow account balance, ERC20 allowance and permit nonce for the given asset.
+   *
+   * It deducts outstanding amounts for the given vouchers from the escrow account balance.
+   *
    * @param buyer Address of the buyer
    * @param seller Address of the seller
    * @param asset ERC-20 token address
    * @param voucherIds Unique identifiers of the vouchers
    * @param valueAggregates Value aggregates of the vouchers, order must match voucherIds
    * @return Balance of the escrow account
+   * @return Allowance of the escrow account for the given asset
+   * @return Permit nonce of the escrow account for the given asset
    */
-  function getAccountBalance(
+  function getAccountDetails(
     address buyer,
     address seller,
     address asset,
     bytes32[] memory voucherIds,
     uint256[] memory valueAggregates
-  ) external view returns (uint256);
+  ) external view returns (uint256, uint256, uint256);
 
   /**
    * @notice Get the amount already collected for a specific voucher
