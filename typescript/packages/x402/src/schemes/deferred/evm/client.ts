@@ -19,6 +19,7 @@ import { signPermit, signDepositAuthorizationInner, signVoucher, verifyVoucher }
 import { encodePayment } from "./utils/paymentUtils";
 import { getUsdcChainConfigForChain } from "../../../shared/evm";
 import { randomBytes } from "node:crypto";
+import { useDeferredFacilitator } from "../../../verify/useDeferred";
 
 const EXPIRY_TIME = 60 * 60 * 24 * 30; // 30 days
 
@@ -272,11 +273,35 @@ export async function createPaymentExtraPayload(
     return;
   }
 
+  // Ensure the deposit is actually needed
+  // This creates a client/buyer <> facilitator interaction but it's necessary to avoid having to trust the seller
+  const { getEscrowAccountDetails } = useDeferredFacilitator({
+    url: extra.account.facilitator as `${string}://${string}`,
+  });
+  const accountDetails = await getEscrowAccountDetails(
+    buyer,
+    paymentRequirements.payTo,
+    asset,
+    extra.voucher.escrow,
+    getNetworkId(network),
+  );
+  if ("error" in accountDetails) {
+    return;
+  }
+
+  // Re-check balance using the data obtained from the facilitator
+  if (
+    BigInt(accountDetails.balance) >=
+    BigInt(depositConfig.threshold) + BigInt(maxAmountRequired)
+  ) {
+    return;
+  }
+
   // Build ERC20 permit if needed
   let signedErc20Permit: DeferredEscrowDepositAuthorizationSignedPermit | undefined;
-  if (BigInt(extra.account.assetAllowance) < BigInt(depositConfig.amount)) {
+  if (BigInt(accountDetails.assetAllowance) < BigInt(depositConfig.amount)) {
     const erc20Permit = {
-      nonce: extra.account.assetPermitNonce,
+      nonce: accountDetails.assetPermitNonce,
       value: depositConfig.amount,
       domain: {
         name: depositConfig.assetDomain.name,
