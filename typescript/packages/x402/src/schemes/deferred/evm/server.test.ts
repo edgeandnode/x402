@@ -8,6 +8,7 @@ import {
 import { getPaymentRequirementsExtra } from "./server";
 import * as idModule from "./id";
 import * as paymentUtilsModule from "./utils/paymentUtils";
+import * as useDeferredModule from "../../../verify/useDeferred";
 
 // Mock dependencies
 vi.mock("./id", () => ({
@@ -18,10 +19,16 @@ vi.mock("./utils/paymentUtils", () => ({
   decodePayment: vi.fn(),
 }));
 
+vi.mock("../../../verify/useDeferred", () => ({
+  useDeferredFacilitator: vi.fn(),
+}));
+
 describe("getPaymentRequirementsExtra", () => {
   const mockSeller: Address = "0x1234567890123456789012345678901234567890";
   const mockEscrow: Address = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
   const mockBuyer: Address = "0x9876543210987654321098765432109876543210";
+  const mockAsset: Address = "0x1111111111111111111111111111111111111111";
+  const mockChainId = 84532;
   const mockVoucherId = "0x7a3e9b10e8a59f9b4e87219b7e5f3e69ac1b7e4625b5de38b1ff8d470ab7f4f1";
   const mockSignature =
     "0x899b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c";
@@ -31,20 +38,26 @@ describe("getPaymentRequirementsExtra", () => {
     buyer: mockBuyer,
     seller: mockSeller,
     valueAggregate: "1000000",
-    asset: "0x1111111111111111111111111111111111111111",
+    asset: mockAsset,
     timestamp: 1715769600,
     nonce: 5,
     escrow: mockEscrow,
-    chainId: 84532,
+    chainId: mockChainId,
     expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
     signature: mockSignature,
   };
 
   const mockGetAvailableVoucher = vi.fn();
+  const mockGetEscrowAccountDetails = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(idModule.generateVoucherId).mockReturnValue(mockVoucherId);
+    vi.mocked(useDeferredModule.useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+    } as unknown as ReturnType<typeof useDeferredModule.useDeferredFacilitator>);
+    // Mock getEscrowAccountDetails to return an error by default (so it doesn't add account info)
+    mockGetEscrowAccountDetails.mockResolvedValue({ error: "not available" });
   });
 
   describe("when no headers are provided", () => {
@@ -54,6 +67,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -79,6 +95,9 @@ describe("getPaymentRequirementsExtra", () => {
         mockBuyer,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -100,6 +119,9 @@ describe("getPaymentRequirementsExtra", () => {
         mockBuyer,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -136,6 +158,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -164,6 +189,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -197,6 +225,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -240,6 +271,9 @@ describe("getPaymentRequirementsExtra", () => {
         mockBuyer, // This should be ignored
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       );
 
@@ -269,6 +303,9 @@ describe("getPaymentRequirementsExtra", () => {
           mockBuyer,
           mockSeller,
           mockEscrow,
+          mockAsset,
+          mockChainId,
+          { url: "https://facilitator.x402.io" },
           mockGetAvailableVoucher,
         ),
       ).rejects.toThrow("Database error");
@@ -285,6 +322,9 @@ describe("getPaymentRequirementsExtra", () => {
           undefined,
           mockSeller,
           mockEscrow,
+          mockAsset,
+          mockChainId,
+          { url: "https://facilitator.x402.io" },
           mockGetAvailableVoucher,
         ),
       ).rejects.toThrow("Invalid base64");
@@ -303,6 +343,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       )) as DeferredPaymentRequirements["extra"];
 
@@ -311,6 +354,9 @@ describe("getPaymentRequirementsExtra", () => {
         undefined,
         mockSeller,
         mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
         mockGetAvailableVoucher,
       )) as DeferredPaymentRequirements["extra"];
 

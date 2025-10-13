@@ -82,6 +82,9 @@ describe("Deferred Payment Integration Tests", () => {
           buyerAddress,
           sellerAddress,
           escrowAddress,
+          assetAddress,
+          84532,
+          { url: "https://facilitator.x402.io" },
           (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
         ),
       } as DeferredPaymentRequirements;
@@ -176,6 +179,9 @@ describe("Deferred Payment Integration Tests", () => {
           buyerAddress,
           sellerAddress,
           escrowAddress,
+          assetAddress,
+          84532,
+          { url: "https://facilitator.x402.io" },
           (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
         ),
       } as DeferredPaymentRequirements;
@@ -271,6 +277,9 @@ describe("Deferred Payment Integration Tests", () => {
           buyerAddress,
           sellerAddress,
           escrowAddress,
+          assetAddress,
+          84532,
+          { url: "https://facilitator.x402.io" },
           (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
         ),
       } as DeferredPaymentRequirements;
@@ -289,6 +298,9 @@ describe("Deferred Payment Integration Tests", () => {
           undefined, // no X-BUYER header
           sellerAddress,
           escrowAddress,
+          assetAddress,
+          84532,
+          { url: "https://facilitator.x402.io" },
           (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
         ),
       } as DeferredPaymentRequirements;
@@ -385,7 +397,7 @@ describe("Deferred Payment Integration Tests", () => {
         owner: buyerAddress,
         spender: escrowAddress,
         value: depositAmount,
-        nonce: 0,
+        nonce: "0",
         deadline: now + oneWeek * 2,
         domain: {
           name: "USD Coin",
@@ -430,6 +442,9 @@ describe("Deferred Payment Integration Tests", () => {
           buyerAddress,
           sellerAddress,
           escrowAddress,
+          assetAddress,
+          84532,
+          { url: "https://facilitator.x402.io" },
           (buyer, seller) => voucherStore.getAvailableVoucher(buyer, seller),
         ),
       } as DeferredPaymentRequirements;

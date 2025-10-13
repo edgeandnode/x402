@@ -119,7 +119,7 @@ describe("preparePaymentHeader: new voucher", () => {
         owner: buyerAddress,
         spender: escrowAddress,
         value: "1000000",
-        nonce: 0,
+        nonce: "0",
         deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
         domain: {
           name: "USD Coin",

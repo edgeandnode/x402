@@ -9,8 +9,7 @@ import {
 import { hasMaxLength, isBigInt, isInteger } from "../refiners";
 import { BasePaymentPayloadSchema, BasePaymentRequirementsSchema } from "./base";
 import { VoucherStore } from "../../../schemes/deferred/evm/store";
-import { ErrorReasons } from "../x402Specs";
-import { EvmOrSvmAddress, MixedAddressRegex, NetworkSchema } from "../..";
+import { NetworkSchema } from "../../shared/network";
 
 export const DEFERRRED_SCHEME = "deferred";
 
@@ -266,7 +265,7 @@ export type DeferredVouchersResponse = z.infer<typeof DeferredVouchersResponseSc
 export const DeferredVoucherCollectionResponseSchema = z.object({
   voucherId: z.string(),
   voucherNonce: z.number(),
-  transactionHash: z.string(),
+  transactionHash: z.string().regex(EvmTransactionHashRegex),
   collectedAmount: z.string(),
   asset: z.string(),
   chainId: z.number(),
@@ -295,9 +294,9 @@ export type DeferredVoucherCollectionsResponse = z.infer<
 // x402DeferredDepositWithAuthorizationResponse
 export const DeferredDepositWithAuthorizationResponseSchema = z.object({
   success: z.boolean(),
-  errorReason: z.enum(ErrorReasons).optional(),
-  payer: EvmOrSvmAddress.optional(),
-  transaction: z.string().regex(MixedAddressRegex),
+  errorReason: z.string().optional(),
+  payer: z.string().regex(EvmAddressRegex).optional(),
+  transaction: z.string().regex(EvmTransactionHashRegex),
   network: NetworkSchema.optional(),
 });
 export type DeferredDepositWithAuthorizationResponse = z.infer<

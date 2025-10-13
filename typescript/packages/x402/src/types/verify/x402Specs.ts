@@ -38,7 +38,6 @@ export const ErrorReasons = [
   "invalid_transaction_reverted",
   "unexpected_verify_error",
   "unexpected_settle_error",
-  "unexpected_verify_error",
   "missing_scheme_context",
   ...ExactErrorReasons,
   ...DeferredErrorReasons,

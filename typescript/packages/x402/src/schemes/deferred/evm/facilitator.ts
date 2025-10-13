@@ -16,6 +16,7 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "../../../types/verify";
+import { ErrorReasons } from "../../../types/verify/x402Specs";
 import {
   DeferredAccountDetailsResponse,
   DeferredDepositWithAuthorizationResponse,
@@ -167,7 +168,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
         network: paymentPayload.network,
         transaction: "",
         errorReason:
-          depositAuthorizationResponse.errorReason ??
+          (depositAuthorizationResponse.errorReason as (typeof ErrorReasons)[number]) ??
           "invalid_deferred_evm_payload_deposit_authorization_failed",
         payer: paymentPayload.payload.voucher.buyer,
       };
