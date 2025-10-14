@@ -25,6 +25,14 @@ vi.mock("x402/client", () => ({
   selectPaymentRequirements: vi.fn(),
 }));
 
+vi.mock("x402/schemes", () => ({
+  deferred: {
+    evm: {
+      createPaymentExtraPayload: vi.fn(),
+    },
+  },
+}));
+
 const createErrorConfig = (
   isRetry = false,
   headers = new AxiosHeaders(),
@@ -324,15 +332,20 @@ describe("withDeferredPaymentInterceptor", () => {
 
   it("should handle 402 errors and retry with payment header", async () => {
     const paymentHeader = "payment-header-value";
+    const extraPayload = { some: "payload" };
     const successResponse = {
       data: "success",
       headers: new AxiosHeaders().set("X-PAYMENT-BUYER", mockWalletClient.address),
     } as AxiosResponse;
 
     const { createPaymentHeader, selectPaymentRequirements } = await import("x402/client");
+    const { deferred } = await import("x402/schemes");
     (createPaymentHeader as ReturnType<typeof vi.fn>).mockResolvedValue(paymentHeader);
     (selectPaymentRequirements as ReturnType<typeof vi.fn>).mockImplementation(
       (requirements, _) => requirements[0],
+    );
+    (deferred.evm.createPaymentExtraPayload as ReturnType<typeof vi.fn>).mockResolvedValue(
+      extraPayload,
     );
     (mockAxiosClient.request as ReturnType<typeof vi.fn>).mockResolvedValue(successResponse);
 
@@ -353,6 +366,7 @@ describe("withDeferredPaymentInterceptor", () => {
       mockWalletClient,
       1,
       validPaymentRequirements[0],
+      extraPayload,
     );
 
     const actualCall = (mockAxiosClient.request as ReturnType<typeof vi.fn>).mock.calls[0][0];
