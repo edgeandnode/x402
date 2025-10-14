@@ -3,7 +3,13 @@ import { Address, Chain, Log, Transport } from "viem";
 import { createSigner, ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements, SchemeContext } from "../../../types/verify";
 import { DeferredPaymentPayload, DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
-import { verify, settle, settleVoucher, depositWithAuthorization } from "./facilitator";
+import {
+  verify,
+  settle,
+  settleVoucher,
+  depositWithAuthorization,
+  getEscrowAccountDetails,
+} from "./facilitator";
 import { VoucherStore } from "./store";
 import * as verifyModule from "./verify";
 
@@ -876,5 +882,309 @@ describe("facilitator - depositWithAuthorization", () => {
     // Should have completed both transactions
     expect(mockWallet.writeContract).toHaveBeenCalledTimes(2);
     expect(mockWallet.waitForTransactionReceipt).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("facilitator - getEscrowAccountDetails", () => {
+  let mockClient: ConnectedClient<Transport, Chain>;
+  let mockVoucherStore: VoucherStore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockClient = {
+      chain: { id: 84532 },
+      readContract: vi.fn(),
+    } as unknown as ConnectedClient<Transport, Chain>;
+
+    mockVoucherStore = {
+      getVouchers: vi.fn(),
+    } as unknown as VoucherStore;
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should return account details successfully with no outstanding vouchers", async () => {
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt(5000000), // balance
+      BigInt(2000000), // allowance
+      BigInt(10), // nonce
+    ]);
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(mockVoucherStore.getVouchers).toHaveBeenCalledWith(
+      {
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        asset: assetAddress,
+        escrow: escrowAddress,
+        chainId: 84532,
+        latest: true,
+      },
+      {
+        limit: 1_000,
+      },
+    );
+
+    expect(mockClient.readContract).toHaveBeenCalledWith({
+      address: escrowAddress,
+      abi: expect.any(Array),
+      functionName: "getAccountDetails",
+      args: [buyerAddress, sellerAddress, assetAddress, [], []],
+    });
+
+    expect(result).toEqual({
+      balance: "5000000",
+      assetAllowance: "2000000",
+      assetPermitNonce: "10",
+    });
+  });
+
+  it("should return account details successfully with outstanding vouchers", async () => {
+    const mockVouchers = [
+      {
+        id: voucherId,
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        valueAggregate: "1000000",
+        asset: assetAddress,
+        timestamp: 1715769600,
+        nonce: 0,
+        escrow: escrowAddress,
+        chainId: 84532,
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        signature:
+          "0x899b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c",
+      },
+      {
+        id: "0x8b4f0c21f9c7af0c5f96d32c8e6f4e79bc2c8e5735c6ef49c2gg9e581bc8g5g2",
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        valueAggregate: "500000",
+        asset: assetAddress,
+        timestamp: 1715769700,
+        nonce: 1,
+        escrow: escrowAddress,
+        chainId: 84532,
+        expiry: 1715769700 + 1000 * 60 * 60 * 24 * 30,
+        signature:
+          "0x79ce97f6d1242aa7b6f4826efb553ed453fd6c7132c665d95bc226d5f3027dd5456d61ed1bd8da5de6cea4d8154070ff458300b6b84e0c9010f434af77ad3d291c",
+      },
+    ];
+
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue(mockVouchers);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt(3500000), // balance (adjusted for outstanding vouchers)
+      BigInt(2000000), // allowance
+      BigInt(5), // nonce
+    ]);
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(mockClient.readContract).toHaveBeenCalledWith({
+      address: escrowAddress,
+      abi: expect.any(Array),
+      functionName: "getAccountDetails",
+      args: [
+        buyerAddress,
+        sellerAddress,
+        assetAddress,
+        [voucherId, "0x8b4f0c21f9c7af0c5f96d32c8e6f4e79bc2c8e5735c6ef49c2gg9e581bc8g5g2"],
+        [BigInt(1000000), BigInt(500000)],
+      ],
+    });
+
+    expect(result).toEqual({
+      balance: "3500000",
+      assetAllowance: "2000000",
+      assetPermitNonce: "5",
+    });
+  });
+
+  it("should return error when contract call fails", async () => {
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
+    vi.mocked(mockClient.readContract).mockRejectedValue(new Error("Contract call failed"));
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(result).toEqual({
+      error: "invalid_deferred_evm_contract_call_failed_account_details",
+    });
+  });
+
+  it("should handle voucher store errors gracefully", async () => {
+    vi.mocked(mockVoucherStore.getVouchers).mockRejectedValue(new Error("Store error"));
+
+    await expect(
+      getEscrowAccountDetails(
+        mockClient,
+        buyerAddress as Address,
+        sellerAddress as Address,
+        assetAddress as Address,
+        escrowAddress as Address,
+        84532,
+        mockVoucherStore,
+      ),
+    ).rejects.toThrow("Store error");
+  });
+
+  it("should handle large number of outstanding vouchers", async () => {
+    const manyVouchers = Array.from({ length: 100 }, (_, i) => ({
+      id: `0x${i.toString(16).padStart(64, "0")}`,
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      valueAggregate: "10000",
+      asset: assetAddress,
+      timestamp: 1715769600 + i,
+      nonce: i,
+      escrow: escrowAddress,
+      chainId: 84532,
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0x899b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c",
+    }));
+
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue(manyVouchers);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt(4000000), // balance
+      BigInt(1000000), // allowance
+      BigInt(3), // nonce
+    ]);
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(result).toEqual({
+      balance: "4000000",
+      assetAllowance: "1000000",
+      assetPermitNonce: "3",
+    });
+
+    const contractCallArgs = vi.mocked(mockClient.readContract).mock.calls[0][0];
+    expect(contractCallArgs.args?.[3]).toHaveLength(100); // All voucher IDs included
+    expect(contractCallArgs.args?.[4]).toHaveLength(100); // All voucher values included
+  });
+
+  it("should handle zero balance", async () => {
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt(0), // zero balance
+      BigInt(0), // zero allowance
+      BigInt(0), // zero nonce
+    ]);
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(result).toEqual({
+      balance: "0",
+      assetAllowance: "0",
+      assetPermitNonce: "0",
+    });
+  });
+
+  it("should handle very large balances", async () => {
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt("1000000000000000000"), // 1 ETH in wei
+      BigInt("500000000000000000"), // 0.5 ETH in wei
+      BigInt(999), // large nonce
+    ]);
+
+    const result = await getEscrowAccountDetails(
+      mockClient,
+      buyerAddress as Address,
+      sellerAddress as Address,
+      assetAddress as Address,
+      escrowAddress as Address,
+      84532,
+      mockVoucherStore,
+    );
+
+    expect(result).toEqual({
+      balance: "1000000000000000000",
+      assetAllowance: "500000000000000000",
+      assetPermitNonce: "999",
+    });
+  });
+
+  it("should call voucher store with correct filters", async () => {
+    const differentBuyer = "0x9876543210987654321098765432109876543210";
+    const differentSeller = "0x8765432109876543210987654321098765432109";
+    const differentAsset = "0x7654321098765432109876543210987654321098";
+    const differentEscrow = "0x6543210987654321098765432109876543210987";
+
+    vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
+    vi.mocked(mockClient.readContract).mockResolvedValue([
+      BigInt(1000000),
+      BigInt(500000),
+      BigInt(1),
+    ]);
+
+    await getEscrowAccountDetails(
+      mockClient,
+      differentBuyer as Address,
+      differentSeller as Address,
+      differentAsset as Address,
+      differentEscrow as Address,
+      1,
+      mockVoucherStore,
+    );
+
+    expect(mockVoucherStore.getVouchers).toHaveBeenCalledWith(
+      {
+        buyer: differentBuyer,
+        seller: differentSeller,
+        asset: differentAsset,
+        escrow: differentEscrow,
+        chainId: 1,
+        latest: true,
+      },
+      {
+        limit: 1_000,
+      },
+    );
   });
 });

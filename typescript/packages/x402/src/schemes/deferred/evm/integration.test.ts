@@ -6,14 +6,24 @@ import {
   DEFERRRED_SCHEME,
   DeferredEscrowDepositAuthorization,
 } from "../../../types/verify/schemes/deferred";
-import { createPayment } from "./client";
-import { decodePayment } from "./utils/paymentUtils";
+import { createPayment, createPaymentExtraPayload } from "./client";
+import { decodePayment, encodePayment } from "./utils/paymentUtils";
 import { settle, verify } from "./facilitator";
 import { InMemoryVoucherStore } from "./store.mock";
 import { getPaymentRequirementsExtra } from "./server";
 import { Chain, Log, TransactionReceipt, Transport } from "viem";
 import { signPermit, signDepositAuthorizationInner } from "./sign";
 import { createPaymentHeader } from "../../../client";
+
+vi.mock("../../../verify/useDeferred", () => ({
+  useDeferredFacilitator: vi.fn().mockReturnValue({
+    getEscrowAccountDetails: vi.fn().mockResolvedValue({
+      balance: "10000000",
+      assetAllowance: "1000000",
+      assetPermitNonce: "0",
+    }),
+  }),
+}));
 
 describe("Deferred Payment Integration Tests", () => {
   const sellerAddress = "0x1234567890123456789012345678901234567890";
@@ -505,6 +515,336 @@ describe("Deferred Payment Integration Tests", () => {
         collectedAt: expect.any(Number),
       });
     });
+
+    it("should handle complete payment lifecycle with createPaymentExtraPayload generating depositAuthorization", async () => {
+      // Initialize facilitator
+      const voucherStore = new InMemoryVoucherStore();
+      const facilitatorWallet = {
+        chain: { id: 84532 },
+        readContract: vi.fn(),
+        writeContract: vi.fn(),
+        waitForTransactionReceipt: vi.fn(),
+      } as unknown as SignerWallet<Chain, Transport>;
+
+      // Create buyer
+      const buyer = createSigner(
+        "base-sepolia",
+        "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+      );
+      const buyerAddress = buyer.account.address;
+
+      // * Step 1: Payment requirements generation with account details indicating low balance
+      const paymentRequirements = {
+        ...basePaymentRequirements,
+        extra: {
+          type: "new",
+          voucher: {
+            id: "0x9dce748efdc0ac6ce5875ae50b7cb8aff28d14e4f335b4f6393c2ed3866bc361",
+            escrow: escrowAddress,
+          },
+          account: {
+            balance: "500", // Low balance - below threshold
+            assetAllowance: "0", // No allowance
+            assetPermitNonce: "0",
+            facilitator: "https://facilitator.x402.io",
+          },
+        },
+      } as DeferredPaymentRequirements;
+
+      // Mock facilitator getEscrowAccountDetails call
+      const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+      const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+        balance: "500", // Confirm low balance
+        assetAllowance: "0",
+        assetPermitNonce: "0",
+      });
+      (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
+        getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      });
+
+      // * Step 2: Client automatically generates deposit authorization using createPaymentExtraPayload
+      const depositConfig = {
+        asset: assetAddress,
+        assetDomain: {
+          name: "USD Coin",
+          version: "2",
+        },
+        threshold: "10000",
+        amount: "1000000",
+      };
+
+      const extraPayload = await createPaymentExtraPayload(buyer, paymentRequirements, [
+        depositConfig,
+      ]);
+
+      expect(extraPayload).toBeDefined();
+      expect(extraPayload?.permit).toBeDefined();
+      expect(extraPayload?.depositAuthorization).toBeDefined();
+
+      // Verify facilitator was called to check balance
+      expect(mockGetEscrowAccountDetails).toHaveBeenCalledWith(
+        buyerAddress,
+        sellerAddress,
+        assetAddress,
+        escrowAddress,
+        84532,
+      );
+
+      // * Step 3: Create payment with the deposit authorization
+      const paymentPayload = (await createPayment(
+        buyer,
+        1,
+        paymentRequirements,
+        extraPayload,
+      )) as DeferredPaymentPayload;
+
+      expect(paymentPayload.payload.depositAuthorization).toBeDefined();
+      expect(paymentPayload.payload.depositAuthorization?.permit).toBeDefined();
+      expect(paymentPayload.payload.depositAuthorization?.depositAuthorization).toBeDefined();
+
+      // * Step 4: Verify payment with deposit authorization (mock blockchain)
+      mockBlockchainInteractionsVerify(facilitatorWallet);
+      const verifyResponse = await verify(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(verifyResponse.isValid).toBe(true);
+
+      // * Step 5: Store voucher
+      voucherStore.storeVoucher({
+        ...paymentPayload.payload.voucher,
+        signature: paymentPayload.payload.signature,
+      });
+
+      // * Step 6: Settle with deposit authorization (mock blockchain)
+      mockBlockchainInteractionsSettleWithDepositAuth(facilitatorWallet);
+      const settleResponse = await settle(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(settleResponse.success).toBe(true);
+
+      // Verify writeContract was called for permit, depositWithAuthorization, and collect
+      expect(facilitatorWallet.writeContract).toHaveBeenCalledTimes(3);
+
+      // First call should be permit
+      const permitCall = vi.mocked(facilitatorWallet.writeContract).mock.calls[0][0];
+      expect(permitCall).toMatchObject({
+        functionName: "permit",
+        address: assetAddress,
+      });
+
+      // Second call should be depositWithAuthorization
+      const depositCall = vi.mocked(facilitatorWallet.writeContract).mock.calls[1][0];
+      expect(depositCall.functionName).toBe("depositWithAuthorization");
+      expect(depositCall.address.toLowerCase()).toBe(escrowAddress.toLowerCase());
+
+      // Third call should be collect
+      const collectCall = vi.mocked(facilitatorWallet.writeContract).mock.calls[2][0];
+      expect(collectCall.functionName).toBe("collect");
+      expect(collectCall.address.toLowerCase()).toBe(escrowAddress.toLowerCase());
+
+      // * Step 7: Verify voucher collection
+      const voucherCollections = await voucherStore.getVoucherCollections(
+        {
+          id: paymentPayload.payload.voucher.id,
+          nonce: paymentPayload.payload.voucher.nonce,
+        },
+        {},
+      );
+      expect(voucherCollections.length).toBe(1);
+      expect(voucherCollections[0]).toEqual({
+        voucherId: paymentPayload.payload.voucher.id,
+        voucherNonce: paymentPayload.payload.voucher.nonce,
+        chainId: paymentPayload.payload.voucher.chainId,
+        transactionHash: settleResponse.transaction,
+        collectedAmount: paymentPayload.payload.voucher.valueAggregate,
+        asset: paymentPayload.payload.voucher.asset,
+        collectedAt: expect.any(Number),
+      });
+    });
+
+    it("should handle payment lifecycle without depositAuthorization when balance is sufficient", async () => {
+      // Initialize facilitator
+      const voucherStore = new InMemoryVoucherStore();
+      const facilitatorWallet = {
+        chain: { id: 84532 },
+        readContract: vi.fn(),
+        writeContract: vi.fn(),
+        waitForTransactionReceipt: vi.fn(),
+      } as unknown as SignerWallet<Chain, Transport>;
+
+      // Create buyer
+      const buyer = createSigner(
+        "base-sepolia",
+        "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+      );
+
+      // * Step 1: Payment requirements generation with account details indicating sufficient balance
+      const paymentRequirements = {
+        ...basePaymentRequirements,
+        extra: {
+          type: "new",
+          voucher: {
+            id: "0x9dce748efdc0ac6ce5875ae50b7cb8aff28d14e4f335b4f6393c2ed3866bc361",
+            escrow: escrowAddress,
+          },
+          account: {
+            balance: "10000000", // High balance - above threshold
+            assetAllowance: "1000000",
+            assetPermitNonce: "0",
+            facilitator: "https://facilitator.x402.io",
+          },
+        },
+      } as DeferredPaymentRequirements;
+
+      // * Step 2: Client checks balance and decides no deposit needed
+      const depositConfig = {
+        asset: assetAddress,
+        assetDomain: {
+          name: "USD Coin",
+          version: "2",
+        },
+        threshold: "10000",
+        amount: "1000000",
+      };
+
+      const extraPayload = await createPaymentExtraPayload(buyer, paymentRequirements, [
+        depositConfig,
+      ]);
+
+      // Should return undefined when balance is sufficient
+      expect(extraPayload).toBeUndefined();
+
+      // * Step 3: Create payment without deposit authorization
+      const paymentPayload = (await createPayment(
+        buyer,
+        1,
+        paymentRequirements,
+      )) as DeferredPaymentPayload;
+
+      expect(paymentPayload.payload.depositAuthorization).toBeUndefined();
+
+      // * Step 4: Verify and settle normally (mock blockchain)
+      mockBlockchainInteractionsVerify(facilitatorWallet);
+      const verifyResponse = await verify(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(verifyResponse.isValid).toBe(true);
+
+      voucherStore.storeVoucher({
+        ...paymentPayload.payload.voucher,
+        signature: paymentPayload.payload.signature,
+      });
+
+      mockBlockchainInteractionsSettle(facilitatorWallet);
+      const settleResponse = await settle(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(settleResponse.success).toBe(true);
+
+      // Should only call writeContract once (for voucher collection, not for deposit)
+      expect(facilitatorWallet.writeContract).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle payment lifecycle with depositAuthorization but no permit when allowance is sufficient", async () => {
+      // Initialize facilitator
+      const voucherStore = new InMemoryVoucherStore();
+      const facilitatorWallet = {
+        chain: { id: 84532 },
+        readContract: vi.fn(),
+        writeContract: vi.fn(),
+        waitForTransactionReceipt: vi.fn(),
+      } as unknown as SignerWallet<Chain, Transport>;
+
+      // Create buyer
+      const buyer = createSigner(
+        "base-sepolia",
+        "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+      );
+      const buyerAddress = buyer.account.address;
+
+      // * Step 1: Payment requirements with low balance but sufficient allowance
+      const paymentRequirements = {
+        ...basePaymentRequirements,
+        extra: {
+          type: "new",
+          voucher: {
+            id: "0x9dce748efdc0ac6ce5875ae50b7cb8aff28d14e4f335b4f6393c2ed3866bc361",
+            escrow: escrowAddress,
+          },
+          account: {
+            balance: "500", // Low balance
+            assetAllowance: "2000000", // Sufficient allowance - no permit needed
+            assetPermitNonce: "0",
+            facilitator: "https://facilitator.x402.io",
+          },
+        },
+      } as DeferredPaymentRequirements;
+
+      // Mock facilitator call
+      const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+      const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+        balance: "500",
+        assetAllowance: "2000000",
+        assetPermitNonce: "0",
+      });
+      (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
+        getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      });
+
+      // * Step 2: Generate deposit authorization without permit
+      const depositConfig = {
+        asset: assetAddress,
+        assetDomain: {
+          name: "USD Coin",
+          version: "2",
+        },
+        threshold: "10000",
+        amount: "1000000",
+      };
+
+      const extraPayload = await createPaymentExtraPayload(buyer, paymentRequirements, [
+        depositConfig,
+      ]);
+
+      expect(extraPayload).toBeDefined();
+      expect(extraPayload?.permit).toBeUndefined(); // No permit needed
+      expect(extraPayload?.depositAuthorization).toBeDefined();
+
+      // * Step 3: Create and verify payment
+      const paymentPayload = (await createPayment(
+        buyer,
+        1,
+        paymentRequirements,
+        extraPayload,
+      )) as DeferredPaymentPayload;
+
+      mockBlockchainInteractionsVerify(facilitatorWallet);
+      const verifyResponse = await verify(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(verifyResponse.isValid).toBe(true);
+
+      voucherStore.storeVoucher({
+        ...paymentPayload.payload.voucher,
+        signature: paymentPayload.payload.signature,
+      });
+
+      // * Step 4: Settle without permit transaction
+      mockBlockchainInteractionsSettleWithDepositAuthNoPermit(facilitatorWallet);
+      const settleResponse = await settle(facilitatorWallet, paymentPayload, paymentRequirements, {
+        deferred: { voucherStore },
+      });
+      expect(settleResponse.success).toBe(true);
+
+      // Should call writeContract twice (depositWithAuthorization + collect, no permit)
+      expect(facilitatorWallet.writeContract).toHaveBeenCalledTimes(2);
+      const depositCall = vi.mocked(facilitatorWallet.writeContract).mock.calls[0][0];
+      expect(depositCall.functionName).toBe("depositWithAuthorization");
+      expect(depositCall.address.toLowerCase()).toBe(escrowAddress.toLowerCase());
+      const collectCall = vi.mocked(facilitatorWallet.writeContract).mock.calls[1][0];
+      expect(collectCall.functionName).toBe("collect");
+      expect(collectCall.address.toLowerCase()).toBe(escrowAddress.toLowerCase());
+    });
   });
 
   describe("Multi-round voucher aggregation", () => {
@@ -638,6 +978,98 @@ function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>
     if (args.functionName === "isDepositAuthorizationNonceUsed") {
       return false;
     }
+    if (args.functionName === "allowance") {
+      return BigInt(10_000_000); // Sufficient allowance for deposits without permit
+    }
     throw new Error(`Unmocked contract read: ${args.functionName}`);
   });
+}
+
+/**
+ * Mock blockchain interactions for settle with deposit authorization (with permit)
+ *
+ * @param wallet - The wallet to mock blockchain interactions for
+ */
+function mockBlockchainInteractionsSettleWithDepositAuth(wallet: SignerWallet<Chain, Transport>) {
+  vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getOutstandingAndCollectableAmount") {
+      return [BigInt(1_000_000)];
+    }
+    if (args.functionName === "getAccount") {
+      return {
+        balance: BigInt(10_000_000),
+        thawingAmount: BigInt(0),
+        thawEndTime: BigInt(0),
+      };
+    }
+    if (args.functionName === "nonces") {
+      return BigInt(0);
+    }
+    if (args.functionName === "isDepositAuthorizationNonceUsed") {
+      return false;
+    }
+    throw new Error(`Unmocked contract read: ${args.functionName}`);
+  });
+  vi.mocked(wallet.writeContract).mockResolvedValue("0x1234567890abcdef");
+  vi.mocked(wallet.waitForTransactionReceipt).mockResolvedValue({
+    status: "success",
+    logs: [
+      {
+        data: "0x000000000000000000000000111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000003f900000000000000000000000000000000000000000000000000000000000003f9",
+        topics: [
+          "0x9cc196634f792f4e61cf0cd71e2fbbd459e54c5e57a9bad3e6f7b6e79503cc70",
+          "0x198e73e1cecf59db4fbf8ca10000000000000000000000000000000000000000",
+          "0x00000000000000000000000080cdf1957ebb7a2df22dd8913753a4423ff4272e",
+          "0x000000000000000000000000c93d37ad45c907ee1b27a02b2e1bd823ba9d379c",
+        ],
+      } as unknown as Log<bigint, number, false>,
+    ],
+  } as TransactionReceipt);
+}
+
+/**
+ * Mock blockchain interactions for settle with deposit authorization (no permit)
+ *
+ * @param wallet - The wallet to mock blockchain interactions for
+ */
+function mockBlockchainInteractionsSettleWithDepositAuthNoPermit(
+  wallet: SignerWallet<Chain, Transport>,
+) {
+  vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getOutstandingAndCollectableAmount") {
+      return [BigInt(1_000_000)];
+    }
+    if (args.functionName === "getAccount") {
+      return {
+        balance: BigInt(10_000_000),
+        thawingAmount: BigInt(0),
+        thawEndTime: BigInt(0),
+      };
+    }
+    if (args.functionName === "nonces") {
+      return BigInt(0);
+    }
+    if (args.functionName === "isDepositAuthorizationNonceUsed") {
+      return false;
+    }
+    if (args.functionName === "allowance") {
+      return BigInt(10_000_000); // Sufficient allowance for deposits without permit
+    }
+    throw new Error(`Unmocked contract read: ${args.functionName}`);
+  });
+  vi.mocked(wallet.writeContract).mockResolvedValue("0x1234567890abcdef");
+  vi.mocked(wallet.waitForTransactionReceipt).mockResolvedValue({
+    status: "success",
+    logs: [
+      {
+        data: "0x000000000000000000000000111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000000000000003f900000000000000000000000000000000000000000000000000000000000003f9",
+        topics: [
+          "0x9cc196634f792f4e61cf0cd71e2fbbd459e54c5e57a9bad3e6f7b6e79503cc70",
+          "0x198e73e1cecf59db4fbf8ca10000000000000000000000000000000000000000",
+          "0x00000000000000000000000080cdf1957ebb7a2df22dd8913753a4423ff4272e",
+          "0x000000000000000000000000c93d37ad45c907ee1b27a02b2e1bd823ba9d379c",
+        ],
+      } as unknown as Log<bigint, number, false>,
+    ],
+  } as TransactionReceipt);
 }

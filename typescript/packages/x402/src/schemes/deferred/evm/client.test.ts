@@ -6,6 +6,7 @@ import {
   preparePaymentHeader,
   signPaymentHeader,
   createNewVoucher,
+  createPaymentExtraPayload,
 } from "./client";
 import {
   DeferredEvmPaymentRequirementsExtraAggregationVoucherSchema,
@@ -17,6 +18,10 @@ import { encodePayment } from "./utils/paymentUtils";
 
 vi.mock("./utils/paymentUtils", () => ({
   encodePayment: vi.fn().mockReturnValue("encoded-payment-header"),
+}));
+
+vi.mock("../../../verify/useDeferred", () => ({
+  useDeferredFacilitator: vi.fn(),
 }));
 
 const buyer = createSigner(
@@ -618,5 +623,343 @@ describe("createPaymentHeader", () => {
     await expect(createPaymentHeader(buyer, 1, mockPaymentRequirements)).rejects.toThrow(
       "Encoding failed",
     );
+  });
+});
+
+describe("createPaymentExtraPayload", () => {
+  const mockPaymentRequirements: PaymentRequirements = {
+    scheme: "deferred",
+    network: "base-sepolia",
+    maxAmountRequired: "1000000",
+    resource: "https://example.com/resource",
+    description: "Test resource",
+    mimeType: "application/json",
+    payTo: sellerAddress,
+    maxTimeoutSeconds: 300,
+    asset: assetAddress,
+    extra: {
+      type: "new",
+      voucher: {
+        id: voucherId,
+        escrow: escrowAddress,
+      },
+      account: {
+        balance: "500000", // Below threshold
+        assetAllowance: "0",
+        assetPermitNonce: "0",
+        facilitator: "https://facilitator.example.com",
+      },
+    },
+  };
+
+  const mockDepositConfig = {
+    asset: assetAddress,
+    assetDomain: {
+      name: "USD Coin",
+      version: "2",
+    },
+    threshold: "10000",
+    amount: "1000000",
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-05-20T00:00:00Z"));
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should return undefined when extra.account is undefined", async () => {
+    const paymentReqs = {
+      ...mockPaymentRequirements,
+      extra: {
+        type: "new",
+        voucher: {
+          id: voucherId,
+          escrow: escrowAddress,
+        },
+      },
+    } as PaymentRequirements;
+
+    const result = await createPaymentExtraPayload(buyer, paymentReqs, [mockDepositConfig]);
+    expect(result).toBeUndefined();
+  });
+
+  it("should return undefined when balance is sufficient", async () => {
+    const paymentReqs = {
+      ...mockPaymentRequirements,
+      extra: {
+        ...mockPaymentRequirements.extra,
+        account: {
+          balance: "10000000", // High balance
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.example.com",
+        },
+      },
+    } as PaymentRequirements;
+
+    const result = await createPaymentExtraPayload(buyer, paymentReqs, [mockDepositConfig]);
+    expect(result).toBeUndefined();
+  });
+
+  it("should return undefined when facilitator check shows sufficient balance", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "10000000", // High balance from facilitator
+      assetAllowance: "1000000",
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(mockGetEscrowAccountDetails).toHaveBeenCalledWith(
+      buyerAddress,
+      sellerAddress,
+      assetAddress,
+      escrowAddress,
+      84532,
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("should return undefined when facilitator returns error", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      error: "facilitator_error",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("should create deposit authorization with permit when allowance is insufficient", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000", // Low balance
+      assetAllowance: "0", // No allowance
+      assetPermitNonce: "5",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.permit).toBeDefined();
+    expect(result?.permit?.owner).toBe(buyerAddress);
+    expect(result?.permit?.spender).toBe(escrowAddress);
+    expect(result?.permit?.value).toBe("1000000");
+    expect(result?.permit?.nonce).toBe("5");
+    expect(result?.permit?.deadline).toBe(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30);
+    expect(result?.permit?.domain).toEqual({
+      name: "USD Coin",
+      version: "2",
+    });
+    expect(result?.permit?.signature).toBeDefined();
+
+    expect(result?.depositAuthorization).toBeDefined();
+    expect(result?.depositAuthorization.buyer).toBe(buyerAddress);
+    expect(result?.depositAuthorization.seller).toBe(sellerAddress);
+    expect(result?.depositAuthorization.asset).toBe(assetAddress);
+    expect(result?.depositAuthorization.amount).toBe("1000000");
+    expect(result?.depositAuthorization.nonce).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(result?.depositAuthorization.expiry).toBe(
+      Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
+    );
+    expect(result?.depositAuthorization.signature).toBeDefined();
+  });
+
+  it("should create deposit authorization without permit when allowance is sufficient", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000", // Low balance
+      assetAllowance: "2000000", // Sufficient allowance
+      assetPermitNonce: "5",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.permit).toBeUndefined(); // No permit needed
+    expect(result?.depositAuthorization).toBeDefined();
+    expect(result?.depositAuthorization.buyer).toBe(buyerAddress);
+    expect(result?.depositAuthorization.seller).toBe(sellerAddress);
+    expect(result?.depositAuthorization.asset).toBe(assetAddress);
+    expect(result?.depositAuthorization.amount).toBe("1000000");
+    expect(result?.depositAuthorization.signature).toBeDefined();
+  });
+
+  it("should use default USDC config when no matching deposit config is provided", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000",
+      assetAllowance: "2000000",
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const usdcPaymentReqs = {
+      ...mockPaymentRequirements,
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Base Sepolia USDC
+    } as PaymentRequirements;
+
+    const result = await createPaymentExtraPayload(buyer, usdcPaymentReqs, []);
+
+    expect(result).toBeDefined();
+    expect(result?.depositAuthorization.amount).toBe("1000000"); // Default 1 USDC
+  });
+
+  it("should handle balance exactly at threshold plus maxAmountRequired", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "1010000", // Exactly threshold (10000) + maxAmountRequired (1000000)
+      assetAllowance: "2000000",
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeUndefined(); // Should not need deposit
+  });
+
+  it("should create deposit when balance is one unit below threshold plus maxAmountRequired", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "1009999", // One below threshold (10000) + maxAmountRequired (1000000)
+      assetAllowance: "2000000",
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.depositAuthorization).toBeDefined();
+  });
+
+  it("should use custom deposit config when provided", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000",
+      assetAllowance: "0",
+      assetPermitNonce: "10",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const customDepositConfig = {
+      asset: assetAddress,
+      assetDomain: {
+        name: "Custom Token",
+        version: "1",
+      },
+      threshold: "50000",
+      amount: "5000000",
+    };
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      customDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.depositAuthorization.amount).toBe("5000000");
+    expect(result?.permit?.value).toBe("5000000");
+    expect(result?.permit?.domain).toEqual({
+      name: "Custom Token",
+      version: "1",
+    });
+  });
+
+  it("should handle allowance exactly at deposit amount", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000",
+      assetAllowance: "1000000", // Exactly the deposit amount
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.permit).toBeUndefined(); // Allowance is sufficient
+  });
+
+  it("should create permit when allowance is one unit below deposit amount", async () => {
+    const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
+    const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      balance: "500000",
+      assetAllowance: "999999", // One below deposit amount
+      assetPermitNonce: "0",
+    });
+
+    vi.mocked(useDeferredFacilitator).mockReturnValue({
+      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await createPaymentExtraPayload(buyer, mockPaymentRequirements, [
+      mockDepositConfig,
+    ]);
+
+    expect(result).toBeDefined();
+    expect(result?.permit).toBeDefined(); // Permit needed
   });
 });
