@@ -7,7 +7,7 @@ import {
   DeferredEscrowDepositAuthorization,
 } from "../../../types/verify/schemes/deferred";
 import { createPayment, createPaymentExtraPayload } from "./client";
-import { decodePayment, encodePayment } from "./utils/paymentUtils";
+import { decodePayment } from "./utils/paymentUtils";
 import { settle, verify } from "./facilitator";
 import { InMemoryVoucherStore } from "./store.mock";
 import { getPaymentRequirementsExtra } from "./server";
@@ -760,7 +760,6 @@ describe("Deferred Payment Integration Tests", () => {
         "base-sepolia",
         "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
       );
-      const buyerAddress = buyer.account.address;
 
       // * Step 1: Payment requirements with low balance but sufficient allowance
       const paymentRequirements = {
