@@ -12,6 +12,7 @@ The `payload` field of the `X-PAYMENT` header must contain the following fields:
 
 - `signature`: The signature of the `EIP-712` voucher.
 - `voucher`: parameters required to reconstruct the signed message for the operation.
+- `depositAuthorization` (optional): A signed authorization allowing the facilitator to deposit funds into escrow on behalf of the buyer. This enables gasless deposits for new buyers or when additional funds are needed.
 
 ### Voucher Fields
 
@@ -46,7 +47,7 @@ Example:
 }
 ```
 
-Full `X-PAYMENT` header:
+Full `X-PAYMENT` header (without deposit authorization):
 
 ```json
 {
@@ -71,36 +72,129 @@ Full `X-PAYMENT` header:
 }
 ```
 
-## `paymentRequirements` extra object
+### Deposit Authorization Fields (optional)
 
-The `extra` object in the "Payment Required Response" should contain the following fields:
-- A `type` field to indicate wether it's a new voucher or an aggregation
-- If this is a new voucher being created:
-  - `voucher`: A simplified voucher object with:
-    - `id`: The voucher id
-    - `escrow`: The address of the escrow contract
-- If an existing voucher is being aggregated:
-  - `signature`: The signature of the latest voucher corresponding to the given `id`
-  - `voucher`: The latest voucher corresponding to the given `id`
+The `depositAuthorization` object enables gasless escrow deposits by allowing the facilitator to execute deposits on behalf of the buyer. This is particularly useful for first-time buyers or when escrow balance needs to be topped up. The structure consists of two parts:
 
-Example:
+**Required:**
+- `depositAuthorization`: EIP-712 signed authorization for the escrow contract
+  - `buyer`: Address of the buyer authorizing the deposit (address)
+  - `seller`: Address of the seller receiving the escrow deposit (address)
+  - `asset`: ERC-20 token contract address (address)
+  - `amount`: Amount to deposit in atomic token units (uint256)
+  - `nonce`: Unique bytes32 for replay protection (bytes32)
+  - `expiry`: Authorization expiration timestamp (uint64)
+  - `signature`: EIP-712 signature of the deposit authorization (bytes)
+
+**Optional:**
+- `permit`: EIP-2612 permit for the ERC-20 token (if token supports permits)
+  - `owner`: Token owner address (address)
+  - `spender`: Escrow contract address (address)
+  - `value`: Token amount to approve (uint256)
+  - `nonce`: Token contract nonce for the permit (uint256/bigint)
+  - `deadline`: Permit expiration timestamp (uint256)
+  - `domain`: Token's EIP-712 domain
+    - `name`: Token name (string)
+    - `version`: Token version (string)
+  - `signature`: EIP-2612 signature of the permit (bytes)
+
+Example `X-PAYMENT` header with deposit authorization:
 
 ```json
 {
-  ...
+  "x402Version": 1,
+  "scheme": "deferred",
+  "network": "base-sepolia",
+  "payload": {
+    "signature": "0x3a2f7e3b6c1d8e9c0f64f8724e5cfb8bfe9a3cdb1ad6e4a876f7d418e47e96b11a23346a1b0e60c8d3a4c4fd0150a244ab4b0e6d6c5fa4103f8fa8fd2870a3c81b",
+    "voucher": {
+      "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+      "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+      "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+      "valueAggregate": "2000000000000000000",
+      "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+      "timestamp": 1740673000,
+      "nonce": 3,
+      "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+      "chainId": 84532,
+      "expiry": 1740759400
+    },
+    "depositAuthorization": {
+      "permit": {
+        "owner": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "spender": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+        "value": "5000000",
+        "nonce": "0",
+        "deadline": 1740759400,
+        "domain": {
+          "name": "USD Coin",
+          "version": "2"
+        },
+        "signature": "0x8f9e2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f1b"
+      },
+      "depositAuthorization": {
+        "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+        "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+        "amount": "5000000",
+        "nonce": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "expiry": 1740759400,
+        "signature": "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b"
+      }
+    }
+  }
+}
+```
+
+## `paymentRequirements` extra object
+
+The `extra` object in the "Payment Required Response" should contain the following fields:
+
+### Common Fields
+- `type`: Indicates whether this is a `"new"` voucher or an `"aggregation"` of an existing voucher
+- `account` (optional): Current escrow account details for the buyer-seller-asset tuple
+  - `balance`: Current escrow balance in atomic token units
+  - `assetAllowance`: Current token allowance for the escrow contract
+  - `assetPermitNonce`: Current permit nonce for the token contract
+  - `facilitator`: Address of the facilitator managing the escrow
+
+### For New Vouchers (`type: "new"`)
+- `voucher`: A simplified voucher object containing:
+  - `id`: The voucher id to use for the new voucher (bytes32)
+  - `escrow`: The address of the escrow contract (address)
+
+### For Aggregation (`type: "aggregation"`)
+- `signature`: The signature of the latest voucher corresponding to the given `id` (bytes)
+- `voucher`: The complete latest voucher corresponding to the given `id` (all voucher fields)
+
+### Examples
+
+**New voucher (without account details):**
+
+```json
+{
   "extra": {
     "type": "new",
     "voucher": {
       "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
-      "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+      "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27"
     }
   }
 }
+```
 
+**Aggregation (with account details):**
+
+```json
 {
-  ...
   "extra": {
     "type": "aggregation",
+    "account": {
+      "balance": "5000000",
+      "assetAllowance": "5000000",
+      "assetPermitNonce": "0",
+      "facilitator": "https://facilitator.com"
+    },
     "signature": "0x3a2f7e3b6c1d8e9c0f64f8724e5cfb8bfe9a3cdb1ad6e4a876f7d418e47e96b11a23346a1b0e60c8d3a4c4fd0150a244ab4b0e6d6c5fa4103f8fa8fd2870a3c81b",
     "voucher": {
       "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
@@ -142,8 +236,26 @@ The following steps are required to verify a deferred payment:
 6. **Expiry validation**:
     - Verify the voucher has not expired by checking that the current timestamp is less than or equal to `expiry`
     - Verify `paymentPayload.voucher.expiry` and `paymentPayload.voucher.timestamp` dates make sense
-7. **Transaction simulation** (optional but recommended):
+7. **Deposit authorization validation** (if present):
+    - Verify the `depositAuthorization.depositAuthorization.signature` is a valid EIP-712 signature
+    - Verify `depositAuthorization.depositAuthorization.buyer` matches `paymentPayload.voucher.buyer`
+    - Verify `depositAuthorization.depositAuthorization.seller` matches `paymentPayload.voucher.seller`
+    - Verify `depositAuthorization.depositAuthorization.asset` matches `paymentPayload.voucher.asset`
+    - Verify `depositAuthorization.depositAuthorization.expiry` has not passed
+    - Verify the nonce has not been used before by checking the escrow contract
+    - If `permit` is present:
+        - Verify the `permit.signature` is a valid EIP-2612 signature
+        - Verify the permit nonce is valid by checking the token contract
+        - Verify `permit.owner` matches the buyer
+        - Verify `permit.spender` matches the escrow contract address
+        - Verify `permit.value` is sufficient to cover the deposit amount
+        - Verify `permit.deadline` has not passed
+8. **Transaction simulation** (optional but recommended):
     - Simulate the voucher collection to ensure the transaction would succeed on-chain
+
+## Deposit Authorization Execution
+
+When a `depositAuthorization` is included in the payment payload, the facilitator should execute it before storing the voucher. This ensures that the buyer has sufficient funds escrowed before the voucher is stored, preventing invalid vouchers from being accepted.
 
 ## Settlement
 

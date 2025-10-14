@@ -195,6 +195,10 @@ struct FlushAllAuthorization {
 
 ### View Functions
 - `getAccount(address buyer, address seller, address asset)` → `EscrowAccount` - Get escrow account details
+- `getAccountDetails(address buyer, address seller, address asset, bytes32[] voucherIds, uint256[] valueAggregates)` → `(uint256 balance, uint256 allowance, uint256 nonce)` - Get account details including available balance after accounting for pending vouchers, token allowance, and permit nonce. Returns:
+  - `balance`: Available escrow balance minus thawing amount and minus amounts needed for the provided voucher collections
+  - `allowance`: Current token allowance granted to the escrow contract
+  - `nonce`: Current EIP-2612 permit nonce for the buyer on the asset token contract
 - `getVoucherCollected(address buyer, address seller, address asset, bytes32 voucherId)` → `uint256` - Get total amount already collected for this voucher ID
 - `getOutstandingAndCollectableAmount(Voucher voucher)` → `(uint256 outstanding, uint256 collectable)` - Returns outstanding amount still owed and amount that can be collected immediately given current escrow balance
 - `isVoucherSignatureValid(Voucher voucher, bytes signature)` → `bool` - Validate voucher signature

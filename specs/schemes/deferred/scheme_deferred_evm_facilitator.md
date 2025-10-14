@@ -42,7 +42,13 @@ Returns the most suitable voucher for aggregation between a buyer-seller pair.
 
 Stores a new signed voucher in the facilitator's voucher store after verifying it. The verification should be exactly the same as you'd get by POSTing to /verify. This allows for replacing that call for one to this endpoint.
 
-**Request Body:**
+If the payment payload contains a `depositAuthorization`, the facilitator must execute it **before** storing the voucher:
+1. If a `permit` is present, call the token contract's `permit` function
+2. Call the escrow contract's `depositWithAuthorization` function
+3. Verify the deposit succeeded by checking the escrow balance
+4. Only then store the voucher
+
+**Request Body (without depositAuthorization):**
 ```json
 {
   "paymentPayload": {
@@ -86,6 +92,70 @@ Stores a new signed voucher in the facilitator's voucher store after verifying i
         "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
         "chainId": 84532,
         "expiry": 1740759400
+      }
+    }
+  }
+}
+```
+
+**Request Body (with depositAuthorization):**
+```json
+{
+  "paymentPayload": {
+    "x402Version": 1,
+    "network": "base-sepolia",
+    "scheme": "deferred",
+    "payload": {
+      "signature": "0x4b3f8e...",
+      "voucher": {
+        "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+        "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+        "valueAggregate": "1000000",
+        "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+        "timestamp": 1740673000,
+        "nonce": 1,
+        "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+        "chainId": 84532,
+        "expiry": 1740759400
+      },
+      "depositAuthorization": {
+        "permit": {
+          "owner": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+          "spender": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+          "value": "5000000",
+          "nonce": "0",
+          "deadline": 1740759400,
+          "domain": {
+            "name": "USD Coin",
+            "version": "2"
+          },
+          "signature": "0x8f9e2a3b..."
+        },
+        "depositAuthorization": {
+          "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+          "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+          "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+          "amount": "5000000",
+          "nonce": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          "expiry": 1740759400,
+          "signature": "0xbfdc3d0a..."
+        }
+      }
+    }
+  },
+  "paymentRequirements": {
+    "x402Version": 1,
+    "network": "base-sepolia",
+    "scheme": "deferred",
+    "recipient": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+    "amount": "1000000",
+    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+    "extra": {
+      "type": "new",
+      "voucher": {
+        "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+        "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27"
       }
     }
   }
