@@ -202,14 +202,13 @@ export async function settle<transport extends Transport, chain extends Chain>(
     }
   }
 
-  const { voucher, signature, depositAuthorization } = paymentPayload.payload;
+  const { voucher, signature } = paymentPayload.payload;
   const response = await settleVoucher(
     wallet,
     voucher,
     signature,
     voucherStore,
     false, // Skip reverification - already verified in verify() call above
-    depositAuthorization,
   );
 
   return {
@@ -227,7 +226,6 @@ export async function settle<transport extends Transport, chain extends Chain>(
  * @param signature - The signature of the voucher
  * @param voucherStore - The voucher store to use for verification
  * @param reverify - Rerun the verification steps for the voucher
- * @param depositAuthorization - A deposit authorization to use for verification purposes
  * @returns A PaymentExecutionResponse containing the transaction status and hash
  */
 export async function settleVoucher<transport extends Transport, chain extends Chain>(
@@ -236,7 +234,6 @@ export async function settleVoucher<transport extends Transport, chain extends C
   signature: string,
   voucherStore: VoucherStore,
   reverify: boolean = true,
-  depositAuthorization?: DeferredEscrowDepositAuthorization,
 ): Promise<SettleResponse> {
   if (reverify) {
     // Verify the voucher signature
@@ -269,7 +266,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
     }
 
     // Verify the onchain state allows the payment to be settled
-    const valid = await verifyVoucherOnchainState(wallet, voucher, depositAuthorization);
+    const valid = await verifyVoucherOnchainState(wallet, voucher);
     if (!valid.isValid) {
       return {
         success: false,
@@ -614,9 +611,9 @@ export async function flushWithAuthorization<transport extends Transport, chain 
           ...(flushAll
             ? {}
             : {
-                seller: getAddress(seller),
-                asset: getAddress(asset),
-              }),
+              seller: getAddress(seller),
+              asset: getAddress(asset),
+            }),
           nonce: flushAuthorization.nonce as `0x${string}`,
           expiry: BigInt(flushAuthorization.expiry),
         },
