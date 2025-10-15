@@ -386,27 +386,49 @@ interface IDeferredPaymentEscrow {
   function getAccount(address buyer, address seller, address asset) external view returns (EscrowAccount memory);
 
   /**
-   * @notice Gets buyer account details for a specific buyer-seller-asset combination.
-   * This returns escrow account balance, ERC20 allowance and permit nonce for the given asset.
-   *
-   * It deducts outstanding amounts for the given vouchers from the escrow account balance.
-   *
+   * @notice Batch read account data including balance after deducting outstanding vouchers
    * @param buyer Address of the buyer
    * @param seller Address of the seller
    * @param asset ERC-20 token address
    * @param voucherIds Unique identifiers of the vouchers
    * @param valueAggregates Value aggregates of the vouchers, order must match voucherIds
-   * @return Balance of the escrow account
-   * @return Allowance of the escrow account for the given asset
-   * @return Permit nonce of the escrow account for the given asset
+   * @return balance Available balance after deducting outstanding vouchers
+   * @return allowance Allowance from asset contract
+   * @return nonce Nonce from asset contract
    */
-  function getAccountDetails(
+  function getAccountData(
     address buyer,
     address seller,
     address asset,
     bytes32[] memory voucherIds,
     uint256[] memory valueAggregates
-  ) external view returns (uint256, uint256, uint256);
+  ) external view returns (uint256 balance, uint256 allowance, uint256 nonce);
+
+  /**
+   * @notice Batch read all data needed for x402 verification in a single call
+   * @param voucher The voucher to verify
+   * @param depositAuthNonce The deposit authorization nonce (pass bytes32(0) if not using deposit auth)
+   * @return voucherOutstanding Outstanding amount for the voucher
+   * @return voucherCollectable Collectable amount for the voucher
+   * @return availableBalance Available balance (balance minus thawing amount)
+   * @return allowance Allowance from asset contract
+   * @return nonce Nonce from asset contract
+   * @return isDepositNonceUsed Whether the deposit authorization nonce has been used
+   */
+  function getVerificationData(
+    Voucher calldata voucher,
+    bytes32 depositAuthNonce
+  )
+    external
+    view
+    returns (
+      uint256 voucherOutstanding,
+      uint256 voucherCollectable,
+      uint256 availableBalance,
+      uint256 allowance,
+      uint256 nonce,
+      bool isDepositNonceUsed
+    );
 
   /**
    * @notice Get the amount already collected for a specific voucher

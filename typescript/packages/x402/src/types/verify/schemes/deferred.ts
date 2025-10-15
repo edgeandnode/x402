@@ -25,8 +25,6 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_no_longer_valid",
   "invalid_deferred_evm_payload_voucher_expired",
   "invalid_deferred_evm_payload_timestamp_too_early",
-  "invalid_deferred_evm_contract_call_failed_outstanding_amount",
-  "invalid_deferred_evm_contract_call_failed_account",
   "invalid_deferred_evm_payload_voucher_non_zero_nonce",
   "invalid_deferred_evm_payload_voucher_id_mismatch",
   "invalid_deferred_evm_payload_voucher_buyer_mismatch",
@@ -48,17 +46,15 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_deposit_authorization_signature",
   "invalid_deferred_evm_payload_permit_continuity",
   "invalid_deferred_evm_payload_deposit_authorization_continuity",
-  "invalid_deferred_evm_contract_call_failed_nonces",
   "invalid_deferred_evm_payload_permit_nonce_invalid",
   "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
-  "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
   "invalid_deferred_evm_payload_deposit_authorization_failed",
   "invalid_deferred_evm_payload_deposit_authorization_buyer_mismatch",
-  "invalid_deferred_evm_contract_call_failed_allowance",
   "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
   "invalid_deferred_evm_payload_flush_authorization_signature",
   "invalid_deferred_evm_payload_flush_authorization_continuity",
   "invalid_deferred_evm_payload_flush_authorization_failed",
+  "invalid_deferred_evm_contract_call_failed_verification_data",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher

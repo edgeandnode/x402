@@ -17,7 +17,7 @@ import { createPaymentHeader } from "../../../client";
 
 vi.mock("../../../verify/useDeferred", () => ({
   useDeferredFacilitator: vi.fn().mockReturnValue({
-    getEscrowAccountDetails: vi.fn().mockResolvedValue({
+    getAccountData: vi.fn().mockResolvedValue({
       balance: "10000000",
       assetAllowance: "1000000",
       assetPermitNonce: "0",
@@ -551,15 +551,15 @@ describe("Deferred Payment Integration Tests", () => {
         },
       } as DeferredPaymentRequirements;
 
-      // Mock facilitator getEscrowAccountDetails call
+      // Mock facilitator getAccountData call
       const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
-      const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      const mockGetAccountData = vi.fn().mockResolvedValue({
         balance: "500", // Confirm low balance
         assetAllowance: "0",
         assetPermitNonce: "0",
       });
       (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
-        getEscrowAccountDetails: mockGetEscrowAccountDetails,
+        getAccountData: mockGetAccountData,
       });
 
       // * Step 2: Client automatically generates deposit authorization using createPaymentExtraPayload
@@ -582,7 +582,7 @@ describe("Deferred Payment Integration Tests", () => {
       expect(extraPayload?.depositAuthorization).toBeDefined();
 
       // Verify facilitator was called to check balance
-      expect(mockGetEscrowAccountDetails).toHaveBeenCalledWith(
+      expect(mockGetAccountData).toHaveBeenCalledWith(
         buyerAddress,
         sellerAddress,
         assetAddress,
@@ -781,13 +781,13 @@ describe("Deferred Payment Integration Tests", () => {
 
       // Mock facilitator call
       const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
-      const mockGetEscrowAccountDetails = vi.fn().mockResolvedValue({
+      const mockGetAccountData = vi.fn().mockResolvedValue({
         balance: "500",
         assetAllowance: "2000000",
         assetPermitNonce: "0",
       });
       (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
-        getEscrowAccountDetails: mockGetEscrowAccountDetails,
+        getAccountData: mockGetAccountData,
       });
 
       // * Step 2: Generate deposit authorization without permit
@@ -919,6 +919,17 @@ describe("Deferred Payment Integration Tests", () => {
  */
 function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>) {
   vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getVerificationData") {
+      return [
+        BigInt(1_000_000), // voucherOutstanding
+        BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // availableBalance
+        BigInt(10_000_000), // allowance
+        BigInt(0), // nonce
+        false, // isDepositNonceUsed
+      ];
+    }
+    // Legacy mocks for backward compatibility
     if (args.functionName === "getOutstandingAndCollectableAmount") {
       return [BigInt(1_000_000)];
     }
@@ -961,6 +972,17 @@ function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>
  */
 function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>) {
   vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getVerificationData") {
+      return [
+        BigInt(1_000_000), // voucherOutstanding
+        BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // availableBalance
+        BigInt(10_000_000), // allowance
+        BigInt(0), // nonce
+        false, // isDepositNonceUsed
+      ];
+    }
+    // Legacy mocks for backward compatibility
     if (args.functionName === "getOutstandingAndCollectableAmount") {
       return [BigInt(1_000_000)];
     }
@@ -991,6 +1013,17 @@ function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>
  */
 function mockBlockchainInteractionsSettleWithDepositAuth(wallet: SignerWallet<Chain, Transport>) {
   vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getVerificationData") {
+      return [
+        BigInt(1_000_000), // voucherOutstanding
+        BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // availableBalance
+        BigInt(10_000_000), // allowance
+        BigInt(0), // nonce
+        false, // isDepositNonceUsed
+      ];
+    }
+    // Legacy mocks for backward compatibility
     if (args.functionName === "getOutstandingAndCollectableAmount") {
       return [BigInt(1_000_000)];
     }
@@ -1035,6 +1068,17 @@ function mockBlockchainInteractionsSettleWithDepositAuthNoPermit(
   wallet: SignerWallet<Chain, Transport>,
 ) {
   vi.mocked(wallet.readContract).mockImplementation(async (args: { functionName: string }) => {
+    if (args.functionName === "getVerificationData") {
+      return [
+        BigInt(1_000_000), // voucherOutstanding
+        BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // availableBalance
+        BigInt(10_000_000), // allowance
+        BigInt(0), // nonce
+        false, // isDepositNonceUsed
+      ];
+    }
+    // Legacy mocks for backward compatibility
     if (args.functionName === "getOutstandingAndCollectableAmount") {
       return [BigInt(1_000_000)];
     }

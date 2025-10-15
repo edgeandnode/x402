@@ -40,6 +40,7 @@ import {
   verifyDepositAuthorizationSignatureAndContinuity,
   verifyFlushAuthorization,
   verifyDepositAuthorizationOnchainState,
+  getOnchainVerificationData,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -119,12 +120,31 @@ export async function verify<
     }
   }
 
+  // Fetch all on-chain data in a single contract call
+  const onchainDataResult = await getOnchainVerificationData(
+    client,
+    paymentPayload.payload.voucher,
+    paymentPayload.payload.depositAuthorization?.depositAuthorization.nonce,
+  );
+
+  if (!onchainDataResult.isValid) {
+    return {
+      isValid: false,
+      invalidReason:
+        onchainDataResult.invalidReason ??
+        "invalid_deferred_evm_contract_call_failed_verification_data",
+      payer: paymentPayload.payload.voucher.buyer,
+    };
+  }
+
+  const onchainData = onchainDataResult.data!;
+
   // Verify the onchain state allows the deposit authorization to be executed
   if (paymentPayload.payload.depositAuthorization) {
-    const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
-      client,
+    const depositAuthorizationOnchainResult = verifyDepositAuthorizationOnchainState(
       paymentPayload.payload.voucher,
       paymentPayload.payload.depositAuthorization,
+      onchainData,
     );
     if (!depositAuthorizationOnchainResult.isValid) {
       return depositAuthorizationOnchainResult;
@@ -132,10 +152,10 @@ export async function verify<
   }
 
   // Verify the onchain state allows the payment to be settled
-  const onchainResult = await verifyVoucherOnchainState(
-    client,
+  const onchainResult = verifyVoucherOnchainState(
     paymentPayload.payload.voucher,
     paymentPayload.payload.depositAuthorization,
+    onchainData,
   );
   if (!onchainResult.isValid) {
     return onchainResult;
@@ -266,7 +286,21 @@ export async function settleVoucher<transport extends Transport, chain extends C
     }
 
     // Verify the onchain state allows the payment to be settled
-    const valid = await verifyVoucherOnchainState(wallet, voucher);
+    const onchainDataResult = await getOnchainVerificationData(wallet, voucher);
+
+    // Check if contract call failed
+    if (!onchainDataResult.isValid) {
+      return {
+        success: false,
+        errorReason:
+          onchainDataResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: voucher.buyer,
+      };
+    }
+
+    const onchainData = onchainDataResult.data!;
+    const valid = verifyVoucherOnchainState(voucher, undefined, onchainData);
     if (!valid.isValid) {
       return {
         success: false,
@@ -384,10 +418,28 @@ export async function depositWithAuthorization<transport extends Transport, chai
     }
 
     // Verify the onchain state allows the deposit authorization to be executed
-    const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
+    const onchainDataResult = await getOnchainVerificationData(
       wallet,
       voucher,
+      depositAuthorization.depositAuthorization.nonce,
+    );
+
+    // Check if contract call failed
+    if (!onchainDataResult.isValid) {
+      return {
+        success: false,
+        errorReason:
+          onchainDataResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: depositAuthorization.depositAuthorization.buyer,
+      };
+    }
+
+    const onchainData = onchainDataResult.data!;
+    const depositAuthorizationOnchainResult = verifyDepositAuthorizationOnchainState(
+      voucher,
       depositAuthorization,
+      onchainData,
     );
     if (!depositAuthorizationOnchainResult.isValid) {
       return {
@@ -509,7 +561,7 @@ export async function depositWithAuthorization<transport extends Transport, chai
  * @param voucherStore - The voucher store to use to get outstanding vouchers
  * @returns The balance of the buyer for the given asset
  */
-export async function getEscrowAccountDetails<
+export async function getAccountData<
   transport extends Transport,
   chain extends Chain,
   account extends Account | undefined,
@@ -543,7 +595,7 @@ export async function getEscrowAccountDetails<
     [balance, allowance, nonce] = await client.readContract({
       address: escrow as Address,
       abi: deferredEscrowABI,
-      functionName: "getAccountDetails",
+      functionName: "getAccountData",
       args: [
         buyer as Address,
         seller as Address,
@@ -611,9 +663,9 @@ export async function flushWithAuthorization<transport extends Transport, chain 
           ...(flushAll
             ? {}
             : {
-              seller: getAddress(seller),
-              asset: getAddress(asset),
-            }),
+                seller: getAddress(seller),
+                asset: getAddress(asset),
+              }),
           nonce: flushAuthorization.nonce as `0x${string}`,
           expiry: BigInt(flushAuthorization.expiry),
         },

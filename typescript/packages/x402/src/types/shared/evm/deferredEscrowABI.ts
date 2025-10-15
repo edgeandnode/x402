@@ -264,7 +264,7 @@ export const deferredEscrowABI = [
   },
   {
     type: "function",
-    name: "getAccountDetails",
+    name: "getAccountData",
     inputs: [
       { name: "buyer", type: "address", internalType: "address" },
       { name: "seller", type: "address", internalType: "address" },
@@ -273,9 +273,9 @@ export const deferredEscrowABI = [
       { name: "valueAggregates", type: "uint256[]", internalType: "uint256[]" },
     ],
     outputs: [
-      { name: "", type: "uint256", internalType: "uint256" },
-      { name: "", type: "uint256", internalType: "uint256" },
-      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "balance", type: "uint256", internalType: "uint256" },
+      { name: "allowance", type: "uint256", internalType: "uint256" },
+      { name: "nonce", type: "uint256", internalType: "uint256" },
     ],
     stateMutability: "view",
   },
@@ -304,6 +304,39 @@ export const deferredEscrowABI = [
     outputs: [
       { name: "outstanding", type: "uint256", internalType: "uint256" },
       { name: "collectable", type: "uint256", internalType: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getVerificationData",
+    inputs: [
+      {
+        name: "voucher",
+        type: "tuple",
+        internalType: "struct IDeferredPaymentEscrow.Voucher",
+        components: [
+          { name: "id", type: "bytes32", internalType: "bytes32" },
+          { name: "buyer", type: "address", internalType: "address" },
+          { name: "seller", type: "address", internalType: "address" },
+          { name: "valueAggregate", type: "uint256", internalType: "uint256" },
+          { name: "asset", type: "address", internalType: "address" },
+          { name: "timestamp", type: "uint64", internalType: "uint64" },
+          { name: "nonce", type: "uint256", internalType: "uint256" },
+          { name: "escrow", type: "address", internalType: "address" },
+          { name: "chainId", type: "uint256", internalType: "uint256" },
+          { name: "expiry", type: "uint64", internalType: "uint64" },
+        ],
+      },
+      { name: "depositAuthNonce", type: "bytes32", internalType: "bytes32" },
+    ],
+    outputs: [
+      { name: "voucherOutstanding", type: "uint256", internalType: "uint256" },
+      { name: "voucherCollectable", type: "uint256", internalType: "uint256" },
+      { name: "availableBalance", type: "uint256", internalType: "uint256" },
+      { name: "allowance", type: "uint256", internalType: "uint256" },
+      { name: "nonce", type: "uint256", internalType: "uint256" },
+      { name: "isDepositNonceUsed", type: "bool", internalType: "bool" },
     ],
     stateMutability: "view",
   },

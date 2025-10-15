@@ -17,10 +17,10 @@ import {
   verifyDepositAuthorizationOnchainState,
   verifyFlushAuthorization,
 } from "./verify";
-import { ConnectedClient, createSigner } from "../../../types/shared/evm/wallet";
+import { createSigner } from "../../../types/shared/evm/wallet";
 import { getNetworkId } from "../../../shared";
 import { VoucherStore } from "./store";
-import { Account, Chain, getAddress, Transport } from "viem";
+import { getAddress } from "viem";
 import { signVoucher } from "./sign";
 
 vi.mock("../../../shared", async (original: () => Promise<Record<string, unknown>>) => {
@@ -1116,101 +1116,81 @@ describe("verifyVoucherDuplicate", () => {
   });
 });
 
-describe("verifyOnchainState", () => {
-  const mockPaymentPayload: DeferredPaymentPayload = {
-    x402Version: 1,
-    scheme: DEFERRRED_SCHEME,
-    network: "base-sepolia",
-    payload: {
-      signature: voucherSignature,
-      voucher: {
-        id: voucherId,
-        buyer: buyerAddress,
-        seller: sellerAddress,
-        valueAggregate: "1000000",
-        asset: assetAddress,
-        timestamp: 1715769600,
-        nonce: 0,
-        escrow: escrowAddress,
-        chainId: 84532,
-        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
-      },
-    },
+describe("verifyVoucherOnchainState", () => {
+  const mockVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
   };
 
-  let mockClient: ConnectedClient<Transport, Chain, Account>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getNetworkId).mockReturnValue(84532);
-    mockClient = {
-      chain: { id: 84532 },
-      readContract: vi.fn(),
-    } as unknown as ConnectedClient<Transport, Chain, Account>;
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it("should return valid if voucher is valid", async () => {
-    vi.mocked(mockClient.readContract)
-      // outstanding amount
-      .mockResolvedValueOnce([BigInt(1_000_000)])
-      // account balance
-      .mockResolvedValueOnce({
-        balance: BigInt(10_000_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      });
-    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+  it("should return valid if voucher is valid", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(10_000_000),
+      allowance: BigInt(1_000_000),
+      nonce: BigInt(0),
+      isDepositNonceUsed: false,
+    };
+    const result = verifyVoucherOnchainState(mockVoucher, undefined, onchainData);
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return error if client network mismatch", async () => {
-    mockClient.chain.id = 1;
-    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_client_network",
-      payer: buyerAddress,
-    });
+  it("should return valid if voucher is valid with deposit authorization", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(500_000),
+      availableBalance: BigInt(400_000), // Not enough without deposit auth
+      allowance: BigInt(1_000_000),
+      nonce: BigInt(0),
+      isDepositNonceUsed: false,
+    };
+    const depositAuthorization = {
+      permit: {
+        owner: buyerAddress,
+        spender: escrowAddress,
+        value: "1000000",
+        nonce: "0",
+        deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        domain: {
+          name: "USD Coin",
+          version: "2",
+        },
+        signature:
+          "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c" as `0x${string}`,
+      },
+      depositAuthorization: {
+        buyer: buyerAddress,
+        seller: sellerAddress,
+        asset: assetAddress,
+        amount: "600000", // Enough to cover the outstanding
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+        signature:
+          "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+      },
+    };
+    const result = verifyVoucherOnchainState(mockVoucher, depositAuthorization, onchainData);
+    expect(result).toEqual({ isValid: true });
   });
 
-  it("should return error if outstanding amount check fails", async () => {
-    vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
-    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if balance check fails", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce([BigInt(1_000_000)])
-      .mockRejectedValueOnce(new Error("Contract call failed"));
-    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_account",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if insufficient balance", async () => {
-    vi.mocked(mockClient.readContract)
-      // outstanding amount
-      .mockResolvedValueOnce([BigInt(1_000_000)])
-      // account balance
-      .mockResolvedValueOnce({
-        balance: BigInt(100_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      });
-
-    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+  it("should return error if insufficient balance", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(100_000),
+      availableBalance: BigInt(100_000),
+      allowance: BigInt(1_000_000),
+      nonce: BigInt(0),
+      isDepositNonceUsed: false,
+    };
+    const result = verifyVoucherOnchainState(mockVoucher, undefined, onchainData);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "insufficient_funds",
@@ -1395,56 +1375,56 @@ describe("verifyDepositAuthorizationOnchainState", () => {
     },
   };
 
-  let mockClient: ConnectedClient<Transport, Chain, Account>;
+  it("should return valid if deposit authorization is valid with permit", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(1_000_000),
+      allowance: BigInt(500_000),
+      nonce: BigInt(0), // Matches permit nonce
+      isDepositNonceUsed: false,
+    };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(mockVoucher.timestamp * 1000 + 100000)); // 100 seconds after voucher timestamp
-    mockClient = {
-      chain: { id: 84532 },
-      readContract: vi.fn(),
-    } as unknown as ConnectedClient<Transport, Chain, Account>;
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.resetAllMocks();
-  });
-
-  it("should return valid if deposit authorization is valid with permit", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce(BigInt(0)) // permit nonce
-      .mockResolvedValueOnce(false); // deposit authorization nonce not used
-
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
+    const result = verifyDepositAuthorizationOnchainState(
       mockVoucher,
       mockDepositAuthorizationWithPermit,
+      onchainData,
     );
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return valid if deposit authorization is valid without permit", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce(BigInt(2000000)) // allowance (sufficient)
-      .mockResolvedValueOnce(false); // deposit authorization nonce not used
+  it("should return valid if deposit authorization is valid without permit", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(1_000_000),
+      allowance: BigInt(2_000_000), // Sufficient allowance
+      nonce: BigInt(0),
+      isDepositNonceUsed: false,
+    };
 
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
+    const result = verifyDepositAuthorizationOnchainState(
       mockVoucher,
       mockDepositAuthorizationWithoutPermit,
+      onchainData,
     );
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return error if allowance is insufficient when no permit", async () => {
-    vi.mocked(mockClient.readContract).mockResolvedValueOnce(BigInt(500000)); // allowance too low
+  it("should return error if allowance is insufficient when no permit", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(1_000_000),
+      allowance: BigInt(500_000), // Insufficient allowance
+      nonce: BigInt(0),
+      isDepositNonceUsed: false,
+    };
 
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
+    const result = verifyDepositAuthorizationOnchainState(
       mockVoucher,
       mockDepositAuthorizationWithoutPermit,
+      onchainData,
     );
     expect(result).toEqual({
       isValid: false,
@@ -1453,28 +1433,20 @@ describe("verifyDepositAuthorizationOnchainState", () => {
     });
   });
 
-  it("should return error if allowance check fails when no permit", async () => {
-    vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
+  it("should return error if permit nonce is invalid", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(1_000_000),
+      allowance: BigInt(500_000),
+      nonce: BigInt(5), // Different nonce
+      isDepositNonceUsed: false,
+    };
 
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
-      mockVoucher,
-      mockDepositAuthorizationWithoutPermit,
-    );
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_allowance",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if permit nonce is invalid", async () => {
-    vi.mocked(mockClient.readContract).mockResolvedValueOnce(BigInt(5)); // Different nonce
-
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
+    const result = verifyDepositAuthorizationOnchainState(
       mockVoucher,
       mockDepositAuthorizationWithPermit,
+      onchainData,
     );
     expect(result).toEqual({
       isValid: false,
@@ -1483,52 +1455,24 @@ describe("verifyDepositAuthorizationOnchainState", () => {
     });
   });
 
-  it("should return error if permit nonce check fails", async () => {
-    vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
+  it("should return error if deposit authorization nonce is already used", () => {
+    const onchainData = {
+      voucherOutstanding: BigInt(1_000_000),
+      voucherCollectable: BigInt(1_000_000),
+      availableBalance: BigInt(1_000_000),
+      allowance: BigInt(500_000),
+      nonce: BigInt(0), // permit nonce ok
+      isDepositNonceUsed: true, // deposit authorization nonce already used
+    };
 
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
+    const result = verifyDepositAuthorizationOnchainState(
       mockVoucher,
       mockDepositAuthorizationWithPermit,
-    );
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if deposit authorization nonce is already used", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce(BigInt(0)) // permit nonce ok
-      .mockResolvedValueOnce(true); // deposit authorization nonce already used
-
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
-      mockVoucher,
-      mockDepositAuthorizationWithPermit,
+      onchainData,
     );
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if deposit authorization nonce check fails", async () => {
-    vi.mocked(mockClient.readContract)
-      .mockResolvedValueOnce(BigInt(0)) // permit nonce ok
-      .mockRejectedValueOnce(new Error("Contract call failed"));
-
-    const result = await verifyDepositAuthorizationOnchainState(
-      mockClient,
-      mockVoucher,
-      mockDepositAuthorizationWithPermit,
-    );
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason:
-        "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
       payer: buyerAddress,
     });
   });

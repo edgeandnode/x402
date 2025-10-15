@@ -280,10 +280,10 @@ export async function createPaymentExtraPayload(
 
   // Ensure the deposit is actually needed
   // This creates a client/buyer <> facilitator interaction but it's necessary to avoid having to trust the seller
-  const { getEscrowAccountDetails } = useDeferredFacilitator({
+  const { getAccountData } = useDeferredFacilitator({
     url: extra.account.facilitator as `${string}://${string}`,
   });
-  const accountDetails = await getEscrowAccountDetails(
+  const accountDetails = await getAccountData(
     buyer,
     paymentRequirements.payTo,
     asset,

@@ -9,7 +9,7 @@ import {
   settleVoucher,
   depositWithAuthorization,
   flushWithAuthorization,
-  getEscrowAccountDetails,
+  getAccountData,
 } from "./facilitator";
 import { VoucherStore } from "./store";
 import * as verifyModule from "./verify";
@@ -24,6 +24,7 @@ vi.mock("./verify", () => ({
   verifyDepositAuthorizationSignatureAndContinuity: vi.fn(),
   verifyDepositAuthorizationOnchainState: vi.fn(),
   verifyFlushAuthorization: vi.fn(),
+  getOnchainVerificationData: vi.fn(),
 }));
 
 const buyer = createSigner(
@@ -120,7 +121,18 @@ describe("facilitator - verify", () => {
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockReturnValue({ isValid: true });
+    vi.mocked(verifyModule.getOnchainVerificationData).mockResolvedValue({
+      isValid: true,
+      data: {
+        voucherOutstanding: BigInt(1000000),
+        voucherCollectable: BigInt(1000000),
+        availableBalance: BigInt(1000000),
+        allowance: BigInt(1000000),
+        nonce: BigInt(0),
+        isDepositNonceUsed: false,
+      },
+    });
   });
 
   afterEach(() => {
@@ -311,8 +323,19 @@ describe("facilitator - settle", () => {
     vi.mocked(verifyModule.verifyPaymentRequirements).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.getOnchainVerificationData).mockResolvedValue({
+      isValid: true,
+      data: {
+        voucherOutstanding: BigInt(1000000),
+        voucherCollectable: BigInt(1000000),
+        availableBalance: BigInt(1000000),
+        allowance: BigInt(1000000),
+        nonce: BigInt(0),
+        isDepositNonceUsed: false,
+      },
+    });
 
     // Mock successful voucher store settlement
     vi.mocked(mockVoucherStore.settleVoucher).mockResolvedValue({ success: true });
@@ -413,8 +436,19 @@ describe("facilitator - settleVoucher", () => {
 
     // Mock successful verification by default
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.getOnchainVerificationData).mockResolvedValue({
+      isValid: true,
+      data: {
+        voucherOutstanding: BigInt(1000000),
+        voucherCollectable: BigInt(1000000),
+        availableBalance: BigInt(1000000),
+        allowance: BigInt(1000000),
+        nonce: BigInt(0),
+        isDepositNonceUsed: false,
+      },
+    });
 
     // Mock successful voucher store settlement
     vi.mocked(mockVoucherStore.settleVoucher).mockResolvedValue({ success: true });
@@ -504,7 +538,7 @@ describe("facilitator - settleVoucher", () => {
   });
 
   it("should return error when onchain state verification fails", async () => {
-    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockReturnValue({
       isValid: false,
       invalidReason: "insufficient_funds",
     });
@@ -655,8 +689,20 @@ describe("facilitator - depositWithAuthorization", () => {
     });
 
     // Mock successful onchain state verification by default
-    vi.mocked(verifyModule.verifyDepositAuthorizationOnchainState).mockResolvedValue({
+    vi.mocked(verifyModule.verifyDepositAuthorizationOnchainState).mockReturnValue({
       isValid: true,
+    });
+
+    vi.mocked(verifyModule.getOnchainVerificationData).mockResolvedValue({
+      isValid: true,
+      data: {
+        voucherOutstanding: BigInt(1000000),
+        voucherCollectable: BigInt(1000000),
+        availableBalance: BigInt(1000000),
+        allowance: BigInt(1000000),
+        nonce: BigInt(0),
+        isDepositNonceUsed: false,
+      },
     });
 
     // Create a proper mock wallet with all required properties
@@ -895,7 +941,7 @@ describe("facilitator - depositWithAuthorization", () => {
   });
 });
 
-describe("facilitator - getEscrowAccountDetails", () => {
+describe("facilitator - getAccountData", () => {
   let mockClient: ConnectedClient<Transport, Chain>;
   let mockVoucherStore: VoucherStore;
 
@@ -924,7 +970,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(10), // nonce
     ]);
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -951,7 +997,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
     expect(mockClient.readContract).toHaveBeenCalledWith({
       address: escrowAddress,
       abi: expect.any(Array),
-      functionName: "getAccountDetails",
+      functionName: "getAccountData",
       args: [buyerAddress, sellerAddress, assetAddress, [], []],
     });
 
@@ -1001,7 +1047,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(5), // nonce
     ]);
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -1014,7 +1060,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
     expect(mockClient.readContract).toHaveBeenCalledWith({
       address: escrowAddress,
       abi: expect.any(Array),
-      functionName: "getAccountDetails",
+      functionName: "getAccountData",
       args: [
         buyerAddress,
         sellerAddress,
@@ -1035,7 +1081,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
     vi.mocked(mockVoucherStore.getVouchers).mockResolvedValue([]);
     vi.mocked(mockClient.readContract).mockRejectedValue(new Error("Contract call failed"));
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -1054,7 +1100,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
     vi.mocked(mockVoucherStore.getVouchers).mockRejectedValue(new Error("Store error"));
 
     await expect(
-      getEscrowAccountDetails(
+      getAccountData(
         mockClient,
         buyerAddress as Address,
         sellerAddress as Address,
@@ -1089,7 +1135,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(3), // nonce
     ]);
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -1118,7 +1164,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(0), // zero nonce
     ]);
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -1143,7 +1189,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(999), // large nonce
     ]);
 
-    const result = await getEscrowAccountDetails(
+    const result = await getAccountData(
       mockClient,
       buyerAddress as Address,
       sellerAddress as Address,
@@ -1173,7 +1219,7 @@ describe("facilitator - getEscrowAccountDetails", () => {
       BigInt(1),
     ]);
 
-    await getEscrowAccountDetails(
+    await getAccountData(
       mockClient,
       differentBuyer as Address,
       differentSeller as Address,

@@ -35,7 +35,7 @@ export async function getPaymentRequirementsExtra(
     seller: string,
   ) => Promise<DeferredEvmPayloadSignedVoucher | null>,
 ): Promise<PaymentRequirementsExtra> {
-  const { getEscrowAccountDetails } = useDeferredFacilitator(facilitator);
+  const { getAccountData } = useDeferredFacilitator(facilitator);
 
   let buyer: Address;
   const newVoucherExtra: PaymentRequirementsExtra = {
@@ -69,7 +69,7 @@ export async function getPaymentRequirementsExtra(
   let assetPermitNonce = "";
   let success = false;
   try {
-    const response = await getEscrowAccountDetails(buyer, seller, asset, escrow, chainId);
+    const response = await getAccountData(buyer, seller, asset, escrow, chainId);
     if (!("error" in response)) {
       success = true;
       ({ balance, assetAllowance, assetPermitNonce } = response);

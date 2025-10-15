@@ -293,7 +293,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
    * @param chainId - The chain ID
    * @returns The balance of the escrow account
    */
-  async function getEscrowAccountDetails(
+  async function getAccountData(
     buyer: string,
     seller: string,
     asset: string,
@@ -359,7 +359,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     verifyVoucher,
     settleVoucher,
     getVoucherCollections,
-    getEscrowAccountDetails,
+    getAccountData,
     flushEscrow,
   };
 }

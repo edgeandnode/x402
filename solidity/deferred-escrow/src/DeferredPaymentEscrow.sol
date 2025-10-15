@@ -369,29 +369,25 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
   }
 
   /**
-   * @notice Gets buyer account details for a specific buyer-seller-asset combination.
-   * This returns escrow account balance, ERC20 allowance and permit nonce for the given asset.
-   *
-   * It deducts outstanding amounts for the given vouchers from the escrow account balance.
-   *
+   * @notice Batch read account data including balance after deducting outstanding vouchers
    * @param buyer Address of the buyer
    * @param seller Address of the seller
    * @param asset ERC-20 token address
    * @param voucherIds Unique identifiers of the vouchers
    * @param valueAggregates Value aggregates of the vouchers, order must match voucherIds
-   * @return Balance of the escrow account
-   * @return Allowance of the escrow account for the given asset
-   * @return Permit nonce of the escrow account for the given asset
+   * @return balance Available balance after deducting outstanding vouchers
+   * @return allowance Allowance from asset contract
+   * @return nonce Nonce from asset contract
    */
-  function getAccountDetails(
+  function getAccountData(
     address buyer,
     address seller,
     address asset,
     bytes32[] memory voucherIds,
     uint256[] memory valueAggregates
-  ) external view returns (uint256, uint256, uint256) {
+  ) external view returns (uint256 balance, uint256 allowance, uint256 nonce) {
     EscrowAccount memory account = _getMainStorage().accounts[buyer][seller][asset];
-    uint256 balance = account.balance - account.thawingAmount;
+    balance = account.balance - account.thawingAmount;
     for (uint256 i = 0; i < voucherIds.length; i++) {
       uint256 alreadyCollected = _getMainStorage().voucherCollected[buyer][seller][asset][voucherIds[i]];
       uint256 toCollect = valueAggregates[i] > alreadyCollected ? valueAggregates[i] - alreadyCollected : 0;
@@ -402,10 +398,52 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
         break;
       }
     }
-    uint256 allowance = IERC20(asset).allowance(buyer, address(this));
-    uint256 nonce = IERC20Permit(asset).nonces(buyer);
+    allowance = IERC20(asset).allowance(buyer, address(this));
+    nonce = IERC20Permit(asset).nonces(buyer);
+  }
 
-    return (balance, allowance, nonce);
+  /**
+   * @notice Batch read all data needed for x402 verification in a single call
+   * @param voucher The voucher to verify
+   * @param depositAuthNonce The deposit authorization nonce (pass bytes32(0) if not using deposit auth)
+   * @return voucherOutstanding Outstanding amount for the voucher
+   * @return voucherCollectable Collectable amount for the voucher
+   * @return availableBalance Available balance (balance minus thawing amount)
+   * @return allowance Allowance from asset contract
+   * @return nonce Nonce from asset contract
+   * @return isDepositNonceUsed Whether the deposit authorization nonce has been used
+   */
+  function getVerificationData(
+    Voucher calldata voucher,
+    bytes32 depositAuthNonce
+  )
+    external
+    view
+    returns (
+      uint256 voucherOutstanding,
+      uint256 voucherCollectable,
+      uint256 availableBalance,
+      uint256 allowance,
+      uint256 nonce,
+      bool isDepositNonceUsed
+    )
+  {
+    MainStorage storage $ = _getMainStorage();
+
+    // Get voucher amounts
+    uint256 alreadyCollected = $.voucherCollected[voucher.buyer][voucher.seller][voucher.asset][voucher.id];
+    (voucherOutstanding, voucherCollectable) = _getOutstandingAndCollectableAmount(voucher, alreadyCollected);
+
+    // Get available balance (balance minus thawing amount)
+    EscrowAccount memory account = $.accounts[voucher.buyer][voucher.seller][voucher.asset];
+    availableBalance = account.balance - account.thawingAmount;
+
+    // Get both allowance and nonce from asset contract
+    allowance = IERC20(voucher.asset).allowance(voucher.buyer, address(this));
+    nonce = IERC20Permit(voucher.asset).nonces(voucher.buyer);
+
+    // Check if deposit authorization nonce is used
+    isDepositNonceUsed = $.usedDepositNonces[voucher.buyer][depositAuthNonce];
   }
 
   /**
