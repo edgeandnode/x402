@@ -8,10 +8,12 @@ import {
   createConnectedClient,
   permitPrimaryType,
   depositAuthorizationPrimaryType,
+  flushAuthorizationPrimaryType,
 } from "../../../types/shared/evm";
 import {
   DeferredEscrowDepositAuthorizationInner,
   DeferredEscrowDepositAuthorizationPermit,
+  DeferredEscrowFlushAuthorization,
   DeferredEvmPayloadVoucher,
 } from "../../../types/verify/schemes/deferred";
 import { getNetworkName } from "../../../shared";
@@ -75,7 +77,7 @@ export async function signVoucher<transport extends Transport, chain extends Cha
  * @param signer - The address of the signer to verify
  * @returns The address that signed the voucher
  */
-export async function verifyVoucher(
+export async function verifyVoucherSignature(
   voucher: DeferredEvmPayloadVoucher,
   signature: Hex,
   signer: Address,
@@ -163,7 +165,7 @@ export async function signPermit<transport extends Transport, chain extends Chai
  * @param asset - The address of the asset
  * @returns The address that signed the voucher
  */
-export async function verifyPermit(
+export async function verifyPermitSignature(
   permit: DeferredEscrowDepositAuthorizationPermit,
   signature: Hex,
   signer: Address,
@@ -254,7 +256,7 @@ export async function signDepositAuthorizationInner<
  * @param escrow - The address of the escrow contract
  * @returns The address that signed the voucher
  */
-export async function verifyDepositAuthorizationInner(
+export async function verifyDepositAuthorizationInnerSignature(
   depositAuthorization: DeferredEscrowDepositAuthorizationInner,
   signature: Hex,
   signer: Address,
@@ -284,6 +286,98 @@ export async function verifyDepositAuthorizationInner(
   return await client.verifyTypedData({
     address: signer,
     ...depositAuthorizationTypedData,
+    signature: signature as Hex,
+  });
+}
+
+/**
+ * Signs a flush authorization
+ *
+ * @param walletClient - The wallet client that will sign the authorization
+ * @param flushAuthorization - The flush authorization to sign
+ * @param chainId - The chain ID
+ * @param escrow - The address of the escrow contract
+ * @returns The signature for the authorization
+ */
+export async function signFlushAuthorization<transport extends Transport, chain extends Chain>(
+  walletClient: SignerWallet<chain, transport> | LocalAccount,
+  flushAuthorization: DeferredEscrowFlushAuthorization,
+  chainId: number,
+  escrow: Address,
+): Promise<{ signature: Hex }> {
+  const { buyer, seller, asset, nonce, expiry } = flushAuthorization;
+  const data = {
+    types: typedDataTypes,
+    primaryType: flushAuthorizationPrimaryType,
+    domain: {
+      name: "DeferredPaymentEscrow",
+      version: "1",
+      chainId: chainId,
+      verifyingContract: getAddress(escrow),
+    },
+    message: {
+      buyer: getAddress(buyer),
+      seller: getAddress(seller),
+      asset: getAddress(asset),
+      nonce,
+      expiry,
+    },
+  };
+
+  if (isSignerWallet(walletClient)) {
+    const signature = await walletClient.signTypedData(data);
+    return {
+      signature,
+    };
+  } else if (isAccount(walletClient) && walletClient.signTypedData) {
+    const signature = await walletClient.signTypedData(data);
+    return {
+      signature,
+    };
+  } else {
+    throw new Error("Invalid wallet client provided does not support signTypedData");
+  }
+}
+
+/**
+ * Verifies a flush authorization signature
+ *
+ * @param flushAuthorization - The flush authorization to verify
+ * @param signature - The signature to verify
+ * @param signer - The address of the signer to verify
+ * @param chainId - The chain ID
+ * @param escrow - The address of the escrow contract
+ * @returns The address that signed the authorization
+ */
+export async function verifyFlushAuthorizationSignature(
+  flushAuthorization: DeferredEscrowFlushAuthorization,
+  signature: Hex,
+  signer: Address,
+  chainId: number,
+  escrow: Address,
+) {
+  const flushAuthorizationTypedData = {
+    types: typedDataTypes,
+    primaryType: flushAuthorizationPrimaryType,
+    domain: {
+      name: "DeferredPaymentEscrow",
+      version: "1",
+      chainId: chainId,
+      verifyingContract: getAddress(escrow),
+    },
+    message: {
+      buyer: getAddress(flushAuthorization.buyer),
+      seller: getAddress(flushAuthorization.seller),
+      asset: getAddress(flushAuthorization.asset),
+      nonce: flushAuthorization.nonce,
+      expiry: flushAuthorization.expiry,
+    },
+  };
+
+  const client = createConnectedClient(getNetworkName(chainId));
+  return await client.verifyTypedData({
+    address: signer,
+    ...flushAuthorizationTypedData,
     signature: signature as Hex,
   });
 }

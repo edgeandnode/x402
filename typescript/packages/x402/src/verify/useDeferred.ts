@@ -2,6 +2,8 @@ import { toJsonSafe } from "../shared/json";
 import {
   DeferredAccountDetailsResponse,
   DeferredErrorResponse,
+  DeferredEscrowFlushAuthorizationSigned,
+  DeferredFlushWithAuthorizationResponse,
   DeferredVoucherCollectionsResponse,
   DeferredVoucherResponse,
   DeferredVouchersResponse,
@@ -298,15 +300,53 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     escrow: string,
     chainId: number,
   ): Promise<DeferredAccountDetailsResponse | DeferredErrorResponse> {
-    const response = await fetch(
-      `${facilitator.url}/deferred/accounts?buyer=${buyer}&seller=${seller}&asset=${asset}&escrow=${escrow}&chainId=${chainId}`,
-    );
+    const response = await fetch(`${facilitator.url}/deferred/buyers/${buyer}/account`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ seller, asset, escrow, chainId }),
+    });
     const responseJson = (await response.json()) as
       | DeferredAccountDetailsResponse
       | DeferredErrorResponse;
     if ("error" in responseJson) {
       throw new Error(responseJson.error);
     }
+    return responseJson;
+  }
+
+  /**
+   * Flushes an escrow account using a flush authorization signature
+   *
+   * @param flushAuthorization - The signed flush authorization
+   * @param escrow - The escrow address
+   * @param chainId - The chain ID
+   *
+   * @returns The flush result
+   */
+  async function flushEscrow(
+    flushAuthorization: DeferredEscrowFlushAuthorizationSigned,
+    escrow: string,
+    chainId: number,
+  ): Promise<DeferredFlushWithAuthorizationResponse> {
+    const response = await fetch(
+      `${facilitator.url}/deferred/buyers/${flushAuthorization.buyer}/flush`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ flushAuthorization, escrow, chainId }),
+      },
+    );
+    const responseJson = (await response.json()) as DeferredFlushWithAuthorizationResponse;
+
+    if (response.status !== 200) {
+      const errorMessage = `Failed to flush escrow: ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
     return responseJson;
   }
 
@@ -320,5 +360,6 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     settleVoucher,
     getVoucherCollections,
     getEscrowAccountDetails,
+    flushEscrow,
   };
 }

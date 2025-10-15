@@ -56,6 +56,9 @@ export const DeferredErrorReasons = [
   "invalid_deferred_evm_payload_deposit_authorization_buyer_mismatch",
   "invalid_deferred_evm_contract_call_failed_allowance",
   "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
+  "invalid_deferred_evm_payload_flush_authorization_signature",
+  "invalid_deferred_evm_payload_flush_authorization_continuity",
+  "invalid_deferred_evm_payload_flush_authorization_failed",
 ] as const;
 
 // x402DeferredEvmPayloadVoucher
@@ -145,6 +148,27 @@ export const DeferredEscrowDepositAuthorizationSchema = z.object({
 });
 export type DeferredEscrowDepositAuthorization = z.infer<
   typeof DeferredEscrowDepositAuthorizationSchema
+>;
+
+// x402DeferredEscrowFlushAuthorization
+export const DeferredEscrowFlushAuthorizationSchema = z.object({
+  buyer: z.string().regex(EvmAddressRegex),
+  seller: z.string().regex(EvmAddressRegex),
+  asset: z.string().regex(EvmAddressRegex),
+  nonce: z.string().regex(HexEncoded64ByteRegex),
+  expiry: z.number().int().nonnegative(),
+});
+export type DeferredEscrowFlushAuthorization = z.infer<
+  typeof DeferredEscrowFlushAuthorizationSchema
+>;
+
+// x402DeferredEscrowFlushAuthorizationSigned
+export const DeferredEscrowFlushAuthorizationSignedSchema =
+  DeferredEscrowFlushAuthorizationSchema.extend({
+    signature: z.string().regex(EvmSignatureRegex),
+  });
+export type DeferredEscrowFlushAuthorizationSigned = z.infer<
+  typeof DeferredEscrowFlushAuthorizationSignedSchema
 >;
 
 // x402DeferredEscrowDepositAuthorizationConfig
@@ -301,6 +325,18 @@ export const DeferredDepositWithAuthorizationResponseSchema = z.object({
 });
 export type DeferredDepositWithAuthorizationResponse = z.infer<
   typeof DeferredDepositWithAuthorizationResponseSchema
+>;
+
+// x402DeferredFlushWithAuthorizationResponse
+export const DeferredFlushWithAuthorizationResponseSchema = z.object({
+  success: z.boolean(),
+  errorReason: z.string().optional(),
+  payer: z.string().regex(EvmAddressRegex).optional(),
+  transaction: z.string().regex(EvmTransactionHashRegex),
+  network: NetworkSchema.optional(),
+});
+export type DeferredFlushWithAuthorizationResponse = z.infer<
+  typeof DeferredFlushWithAuthorizationResponseSchema
 >;
 
 // x402DeferredAccountDetailsResponse

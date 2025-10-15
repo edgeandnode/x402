@@ -15,7 +15,12 @@ import {
   UnsignedDeferredPaymentPayload,
   UnsignedDeferredPaymentPayloadSchema,
 } from "../../../types/verify/schemes/deferred";
-import { signPermit, signDepositAuthorizationInner, signVoucher, verifyVoucher } from "./sign";
+import {
+  signPermit,
+  signDepositAuthorizationInner,
+  signVoucher,
+  verifyVoucherSignature,
+} from "./sign";
 import { encodePayment } from "./utils/paymentUtils";
 import { getUsdcChainConfigForChain } from "../../../shared/evm";
 import { randomBytes } from "node:crypto";
@@ -126,7 +131,7 @@ export async function aggregateVoucher(
   }
 
   // verify signature is valid and the voucher's buyer is the client
-  const isValid = await verifyVoucher(extra.voucher, extra.signature as Hex, buyer);
+  const isValid = await verifyVoucherSignature(extra.voucher, extra.signature as Hex, buyer);
   if (!isValid) {
     throw new Error("Invalid voucher signature");
   }

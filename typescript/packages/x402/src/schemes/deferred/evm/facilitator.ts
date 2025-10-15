@@ -22,7 +22,9 @@ import {
   DeferredDepositWithAuthorizationResponse,
   DeferredErrorResponse,
   DeferredEscrowDepositAuthorization,
+  DeferredEscrowFlushAuthorizationSigned,
   DeferredEvmPayloadVoucher,
+  DeferredFlushWithAuthorizationResponse,
   DeferredPaymentPayloadSchema,
   DeferredPaymentRequirementsSchema,
   DeferredSchemeContextSchema,
@@ -31,11 +33,12 @@ import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 import { usdcABI } from "../../../types/shared/evm/erc20PermitABI";
 import {
   verifyPaymentRequirements,
-  verifyVoucherSignature,
+  verifyVoucherSignatureWrapper,
   verifyOnchainState,
   verifyVoucherContinuity,
   verifyVoucherAvailability,
   verifyDepositAuthorization,
+  verifyFlushAuthorization,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -82,7 +85,7 @@ export async function verify<
   }
 
   // Verify voucher signature is valid
-  const signatureResult = await verifyVoucherSignature(
+  const signatureResult = await verifyVoucherSignatureWrapper(
     paymentPayload.payload.voucher,
     paymentPayload.payload.signature,
   );
@@ -213,7 +216,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
   depositAuthorization?: DeferredEscrowDepositAuthorization,
 ): Promise<SettleResponse> {
   // Verify the voucher signature
-  const signatureResult = await verifyVoucherSignature(voucher, signature);
+  const signatureResult = await verifyVoucherSignatureWrapper(voucher, signature);
   if (!signatureResult.isValid) {
     return {
       success: false,
@@ -513,5 +516,78 @@ export async function getEscrowAccountDetails<
     balance: balance.toString(),
     assetAllowance: allowance.toString(),
     assetPermitNonce: nonce.toString(),
+  };
+}
+
+/**
+ * Flushes an escrow account using a signed flush authorization
+ *
+ * This function performs a flush operation which:
+ * 1. Withdraws any funds that have completed their thawing period (ready to withdraw)
+ * 2. Initiates thawing for any remaining balance that isn't already thawing
+ *
+ * @param wallet - The facilitator wallet that will submit the transaction
+ * @param flushAuthorization - The signed flush authorization from the buyer
+ * @param escrow - The address of the escrow contract
+ * @returns A response containing the transaction status and hash
+ */
+export async function flushWithAuthorization<transport extends Transport, chain extends Chain>(
+  wallet: SignerWallet<chain, transport>,
+  flushAuthorization: DeferredEscrowFlushAuthorizationSigned,
+  escrow: Address,
+): Promise<DeferredFlushWithAuthorizationResponse> {
+  // Verify the flush authorization
+  const valid = await verifyFlushAuthorization(flushAuthorization, escrow, wallet.chain.id);
+  if (!valid.isValid) {
+    return {
+      success: false,
+      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_flush_authorization_failed",
+      transaction: "",
+      payer: flushAuthorization.buyer,
+    };
+  }
+
+  let tx = "";
+  try {
+    tx = await wallet.writeContract({
+      address: escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "flushWithAuthorization" as const,
+      args: [
+        {
+          buyer: getAddress(flushAuthorization.buyer),
+          seller: getAddress(flushAuthorization.seller),
+          asset: getAddress(flushAuthorization.asset),
+          nonce: flushAuthorization.nonce as `0x${string}`,
+          expiry: BigInt(flushAuthorization.expiry),
+        },
+        flushAuthorization.signature as `0x${string}`,
+      ],
+      chain: wallet.chain as Chain,
+    });
+  } catch (error) {
+    console.error(error);
+    return {
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: flushAuthorization.buyer,
+    };
+  }
+
+  const receipt = await wallet.waitForTransactionReceipt({ hash: tx as `0x${string}` });
+  if (receipt.status !== "success") {
+    return {
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: tx,
+      payer: flushAuthorization.buyer,
+    };
+  }
+
+  return {
+    success: true,
+    transaction: tx,
+    payer: flushAuthorization.buyer,
   };
 }

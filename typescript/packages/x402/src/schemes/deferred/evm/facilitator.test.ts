@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Address, Chain, Log, Transport } from "viem";
+import { Address, Chain, Log, TransactionReceipt, Transport } from "viem";
 import { createSigner, ConnectedClient, SignerWallet } from "../../../types/shared/evm";
 import { PaymentRequirements, SchemeContext } from "../../../types/verify";
 import { DeferredPaymentPayload, DEFERRRED_SCHEME } from "../../../types/verify/schemes/deferred";
@@ -8,6 +8,7 @@ import {
   settle,
   settleVoucher,
   depositWithAuthorization,
+  flushWithAuthorization,
   getEscrowAccountDetails,
 } from "./facilitator";
 import { VoucherStore } from "./store";
@@ -17,10 +18,11 @@ import * as verifyModule from "./verify";
 vi.mock("./verify", () => ({
   verifyPaymentRequirements: vi.fn(),
   verifyVoucherContinuity: vi.fn(),
-  verifyVoucherSignature: vi.fn(),
+  verifyVoucherSignatureWrapper: vi.fn(),
   verifyVoucherAvailability: vi.fn(),
   verifyOnchainState: vi.fn(),
   verifyDepositAuthorization: vi.fn(),
+  verifyFlushAuthorization: vi.fn(),
 }));
 
 const buyer = createSigner(
@@ -115,7 +117,7 @@ describe("facilitator - verify", () => {
     // Mock all verification functions to return success by default
     vi.mocked(verifyModule.verifyPaymentRequirements).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
-    vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
   });
@@ -180,7 +182,7 @@ describe("facilitator - verify", () => {
   });
 
   it("should return invalid response when voucher signature verification fails", async () => {
-    vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({
+    vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
       payer: buyerAddress,
@@ -307,7 +309,7 @@ describe("facilitator - settle", () => {
     // Mock successful verification by default
     vi.mocked(verifyModule.verifyPaymentRequirements).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
-    vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
@@ -409,7 +411,7 @@ describe("facilitator - settleVoucher", () => {
     } as unknown as VoucherStore;
 
     // Mock successful verification by default
-    vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
@@ -485,7 +487,7 @@ describe("facilitator - settleVoucher", () => {
   });
 
   it("should return error when voucher signature verification fails", async () => {
-    vi.mocked(verifyModule.verifyVoucherSignature).mockResolvedValue({
+    vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_signature",
     });
@@ -1186,5 +1188,139 @@ describe("facilitator - getEscrowAccountDetails", () => {
         limit: 1_000,
       },
     );
+  });
+});
+
+describe("facilitator - flushWithAuthorization", () => {
+  const mockFlushAuthorization = {
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    asset: assetAddress,
+    nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
+    signature:
+      "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+  };
+
+  let mockWallet: SignerWallet<Chain, Transport>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock successful verification by default
+    vi.mocked(verifyModule.verifyFlushAuthorization).mockResolvedValue({ isValid: true });
+
+    // Create a proper mock wallet with all required properties
+    mockWallet = {
+      account: {
+        address: buyerAddress,
+      },
+      chain: { id: 84532 },
+      readContract: vi.fn(),
+      writeContract: vi.fn().mockResolvedValue("0x1234567890abcdef"),
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        logs: [],
+      }),
+    } as unknown as SignerWallet<Chain, Transport>;
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should flush with authorization successfully", async () => {
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract once (flushWithAuthorization)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+
+    // Verify flushWithAuthorization call
+    const flushCall = vi.mocked(mockWallet.writeContract).mock.calls[0][0];
+    expect(flushCall).toMatchObject({
+      address: escrowAddress,
+      functionName: "flushWithAuthorization",
+    });
+
+    // Verify the args structure
+    expect(flushCall.args?.[0]).toMatchObject({
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      nonce: mockFlushAuthorization.nonce,
+    });
+    expect((flushCall.args?.[0] as { expiry: bigint }).expiry).toBe(
+      BigInt(mockFlushAuthorization.expiry),
+    );
+    expect(flushCall.args?.[1]).toBe(mockFlushAuthorization.signature);
+  });
+
+  it("should return error if flush authorization verification fails", async () => {
+    vi.mocked(verifyModule.verifyFlushAuthorization).mockResolvedValue({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+    });
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("should return error when flushWithAuthorization transaction reverts", async () => {
+    vi.mocked(mockWallet.writeContract).mockRejectedValueOnce(new Error("Flush failed"));
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error when flushWithAuthorization transaction has failed status", async () => {
+    vi.mocked(mockWallet.waitForTransactionReceipt).mockResolvedValueOnce({
+      status: "reverted",
+      logs: [],
+    } as unknown as TransactionReceipt);
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_state",
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PaymentRequirements } from "../../../types";
+import { DeferredEscrowFlushAuthorizationSigned, PaymentRequirements } from "../../../types";
 import {
   DeferredPaymentPayload,
   DeferredPaymentRequirements,
@@ -8,12 +8,13 @@ import {
 } from "../../../types/verify/schemes/deferred";
 import {
   verifyPaymentRequirements,
-  verifyVoucherSignature,
+  verifyVoucherSignatureWrapper,
   verifyOnchainState,
   verifyVoucherContinuity,
   verifyVoucherAvailability,
   verifyVoucherDuplicate,
   verifyDepositAuthorization,
+  verifyFlushAuthorization,
 } from "./verify";
 import { ConnectedClient, createSigner } from "../../../types/shared/evm/wallet";
 import { getNetworkId } from "../../../shared";
@@ -738,12 +739,15 @@ describe("verifyVoucherSignature", async () => {
   const { signature } = await signVoucher(buyer, mockPaymentPayload.payload.voucher);
 
   it("should return isValid: true for valid voucher signature", async () => {
-    const result = await verifyVoucherSignature(mockPaymentPayload.payload.voucher, signature);
+    const result = await verifyVoucherSignatureWrapper(
+      mockPaymentPayload.payload.voucher,
+      signature,
+    );
     expect(result).toEqual({ isValid: true });
   });
 
   it("should return isValid: false for invalid voucher signature", async () => {
-    const result = await verifyVoucherSignature(
+    const result = await verifyVoucherSignatureWrapper(
       mockPaymentPayload.payload.voucher,
       "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c",
     );
@@ -1437,6 +1441,114 @@ describe("verifyDepositAuthorization", () => {
       isValid: false,
       invalidReason:
         "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
+      payer: buyerAddress,
+    });
+  });
+});
+
+describe("verifyFlushAuthorization", () => {
+  let mockFlushAuthorization: DeferredEscrowFlushAuthorizationSigned;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1715769600 * 1000 + 100000)); // 100 seconds after timestamp
+
+    // Import signFlushAuthorization to generate a valid signature
+    const { signFlushAuthorization } = await import("./sign");
+    const buyer = createSigner(
+      "base-sepolia",
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+
+    const flushAuthBase = {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
+    };
+
+    const { signature } = await signFlushAuthorization(
+      buyer,
+      flushAuthBase,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    mockFlushAuthorization = {
+      ...flushAuthBase,
+      signature,
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+  });
+
+  it("should return valid if flush authorization is valid", async () => {
+    const result = await verifyFlushAuthorization(
+      mockFlushAuthorization,
+      escrowAddress as `0x${string}`,
+      84532,
+    );
+    expect(result).toEqual({ isValid: true });
+  });
+
+  it("should return error if flush authorization signature is invalid", async () => {
+    const invalidFlushAuth = {
+      ...mockFlushAuthorization,
+      signature: "0xinvalidsignature" as `0x${string}`,
+    };
+
+    const result = await verifyFlushAuthorization(
+      invalidFlushAuth,
+      escrowAddress as `0x${string}`,
+      84532,
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if flush authorization is expired", async () => {
+    const { signFlushAuthorization } = await import("./sign");
+    const buyer = createSigner(
+      "base-sepolia",
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+
+    const expiredFlushAuthBase = {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 - 1000, // expired
+    };
+
+    const { signature } = await signFlushAuthorization(
+      buyer,
+      expiredFlushAuthBase,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    const expiredFlushAuth = {
+      ...expiredFlushAuthBase,
+      signature,
+    };
+
+    const result = await verifyFlushAuthorization(
+      expiredFlushAuth,
+      escrowAddress as `0x${string}`,
+      84532,
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_continuity",
       payer: buyerAddress,
     });
   });

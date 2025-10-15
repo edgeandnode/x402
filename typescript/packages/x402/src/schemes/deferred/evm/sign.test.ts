@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSigner } from "../../../types/shared/evm";
 import {
   signVoucher,
-  verifyVoucher,
+  verifyVoucherSignature,
   signPermit,
-  verifyPermit,
+  verifyPermitSignature,
   signDepositAuthorizationInner,
-  verifyDepositAuthorizationInner,
+  verifyDepositAuthorizationInnerSignature,
+  signFlushAuthorization,
+  verifyFlushAuthorizationSignature,
 } from "./sign";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -55,12 +57,16 @@ describe("voucher signature", () => {
   });
 
   it("should verify a valid voucher signature", async () => {
-    const isValid = await verifyVoucher(mockVoucher, mockVoucherSignature, buyerAddress);
+    const isValid = await verifyVoucherSignature(mockVoucher, mockVoucherSignature, buyerAddress);
     expect(isValid).toBe(true);
   });
 
   it("should return false if voucher signature is valid but for a different buyer", async () => {
-    const isValid = await verifyVoucher(mockVoucher, mockVoucherSignature, anotherBuyerAddress);
+    const isValid = await verifyVoucherSignature(
+      mockVoucher,
+      mockVoucherSignature,
+      anotherBuyerAddress,
+    );
     expect(isValid).toBe(false);
   });
 
@@ -79,7 +85,11 @@ describe("voucher signature", () => {
     );
     const signature = await signVoucher(localAccount, mockVoucher);
 
-    const isValid = await verifyVoucher(mockVoucher, signature.signature, localAccount.address);
+    const isValid = await verifyVoucherSignature(
+      mockVoucher,
+      signature.signature,
+      localAccount.address,
+    );
     expect(isValid).toBe(true);
   });
 
@@ -114,7 +124,7 @@ describe("permit signature", () => {
     owner: buyerAddress,
     spender: escrowAddress,
     value: "1000000",
-    nonce: 0,
+    nonce: "0",
     deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
     domain: {
       name: "USD Coin",
@@ -141,7 +151,7 @@ describe("permit signature", () => {
   });
 
   it("should verify a valid permit signature", async () => {
-    const isValid = await verifyPermit(
+    const isValid = await verifyPermitSignature(
       mockPermit,
       mockPermitSignature as `0x${string}`,
       buyerAddress as `0x${string}`,
@@ -152,7 +162,7 @@ describe("permit signature", () => {
   });
 
   it("should return false if permit signature is valid but for a different signer", async () => {
-    const isValid = await verifyPermit(
+    const isValid = await verifyPermitSignature(
       mockPermit,
       mockPermitSignature as `0x${string}`,
       anotherBuyerAddress as `0x${string}`,
@@ -187,7 +197,7 @@ describe("permit signature", () => {
       assetAddress as `0x${string}`,
     );
 
-    const isValid = await verifyPermit(
+    const isValid = await verifyPermitSignature(
       mockPermit,
       signature.signature,
       localAccount.address,
@@ -255,7 +265,7 @@ describe("deposit authorization signature", () => {
   });
 
   it("should verify a valid deposit authorization signature", async () => {
-    const isValid = await verifyDepositAuthorizationInner(
+    const isValid = await verifyDepositAuthorizationInnerSignature(
       mockDepositAuth,
       mockDepositAuthSignature as `0x${string}`,
       buyerAddress as `0x${string}`,
@@ -266,7 +276,7 @@ describe("deposit authorization signature", () => {
   });
 
   it("should return false if deposit authorization signature is valid but for a different signer", async () => {
-    const isValid = await verifyDepositAuthorizationInner(
+    const isValid = await verifyDepositAuthorizationInnerSignature(
       mockDepositAuth,
       mockDepositAuthSignature as `0x${string}`,
       anotherBuyerAddress as `0x${string}`,
@@ -301,7 +311,7 @@ describe("deposit authorization signature", () => {
       escrowAddress as `0x${string}`,
     );
 
-    const isValid = await verifyDepositAuthorizationInner(
+    const isValid = await verifyDepositAuthorizationInnerSignature(
       mockDepositAuth,
       signature.signature,
       localAccount.address,
@@ -341,6 +351,133 @@ describe("deposit authorization signature", () => {
         84532,
         escrowAddress as `0x${string}`,
       ),
+    ).rejects.toThrow("Invalid wallet client provided does not support signTypedData");
+  });
+});
+
+describe("flush authorization signature", () => {
+  const mockFlushAuth = {
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    asset: assetAddress,
+    nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Set a fixed time for consistent testing
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should create a valid flush authorization signature", async () => {
+    const signature = await signFlushAuthorization(
+      buyer,
+      mockFlushAuth,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+    expect(signature.signature).toBeDefined();
+    expect(signature.signature).toMatch(/^0x[0-9a-fA-F]{130}$/);
+  });
+
+  it("should verify a valid flush authorization signature", async () => {
+    const signature = await signFlushAuthorization(
+      buyer,
+      mockFlushAuth,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    const isValid = await verifyFlushAuthorizationSignature(
+      mockFlushAuth,
+      signature.signature,
+      buyerAddress as `0x${string}`,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+    expect(isValid).toBe(true);
+  });
+
+  it("should return false if flush authorization signature is valid but for a different signer", async () => {
+    const signature = await signFlushAuthorization(
+      buyer,
+      mockFlushAuth,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    const isValid = await verifyFlushAuthorizationSignature(
+      mockFlushAuth,
+      signature.signature,
+      anotherBuyerAddress as `0x${string}`,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+    expect(isValid).toBe(false);
+  });
+
+  it("should sign a flush authorization using a LocalAccount", async () => {
+    const localAccount = privateKeyToAccount(
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+    const signature = await signFlushAuthorization(
+      localAccount,
+      mockFlushAuth,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(signature.signature).toBeDefined();
+    expect(signature.signature).toMatch(/^0x[0-9a-fA-F]{130}$/);
+  });
+
+  it("should verify a flush authorization signed by a LocalAccount", async () => {
+    const localAccount = privateKeyToAccount(
+      "0xcb160425c35458024591e64638d6f7720dac915a0fb035c5964f6d51de0987d9",
+    );
+    const signature = await signFlushAuthorization(
+      localAccount,
+      mockFlushAuth,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+
+    const isValid = await verifyFlushAuthorizationSignature(
+      mockFlushAuth,
+      signature.signature,
+      localAccount.address,
+      84532,
+      escrowAddress as `0x${string}`,
+    );
+    expect(isValid).toBe(true);
+  });
+
+  it("should throw error if wallet client does not support signTypedData", async () => {
+    const invalidWallet = {
+      account: { address: buyerAddress },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await expect(
+      signFlushAuthorization(invalidWallet, mockFlushAuth, 84532, escrowAddress as `0x${string}`),
+    ).rejects.toThrow("Invalid wallet client provided does not support signTypedData");
+  });
+
+  it("should throw error if LocalAccount does not support signTypedData", async () => {
+    const invalidAccount = {
+      address: buyerAddress,
+      type: "local",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await expect(
+      signFlushAuthorization(invalidAccount, mockFlushAuth, 84532, escrowAddress as `0x${string}`),
     ).rejects.toThrow("Invalid wallet client provided does not support signTypedData");
   });
 });

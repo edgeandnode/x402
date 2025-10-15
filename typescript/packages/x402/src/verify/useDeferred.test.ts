@@ -59,6 +59,7 @@ describe("useDeferredFacilitator", () => {
       expect(facilitator).toHaveProperty("verifyVoucher");
       expect(facilitator).toHaveProperty("settleVoucher");
       expect(facilitator).toHaveProperty("getVoucherCollections");
+      expect(facilitator).toHaveProperty("flushEscrow");
     });
 
     it("should use default facilitator URL when no config provided", async () => {
@@ -912,6 +913,131 @@ describe("useDeferredFacilitator", () => {
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
         `${customFacilitatorUrl}/deferred/vouchers/collections`,
+      );
+    });
+  });
+
+  describe("flushEscrow", () => {
+    const mockFlushAuthorization = {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b",
+    };
+
+    it("should flush escrow successfully", async () => {
+      const mockResponse = {
+        success: true,
+        transaction: "0xabcdef1234567890",
+        payer: buyerAddress,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532);
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/buyers/${buyerAddress}/flush`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            flushAuthorization: mockFlushAuthorization,
+            escrow: escrowAddress,
+            chainId: 84532,
+          }),
+        },
+      );
+    });
+
+    it("should throw error for non-200 status", async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 400,
+        statusText: "Bad Request",
+        json: () => Promise.resolve({}),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(
+        facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532),
+      ).rejects.toThrow("Failed to flush escrow: Bad Request");
+    });
+
+    it("should use fallback error message", async () => {
+      mockFetch.mockResolvedValueOnce({
+        status: 500,
+        statusText: "Internal Server Error",
+        json: () => Promise.resolve({}),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(
+        facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532),
+      ).rejects.toThrow("Failed to flush escrow: Internal Server Error");
+    });
+
+    it("should handle failed flush response", async () => {
+      const mockResponse = {
+        success: false,
+        errorReason: "invalid_signature",
+        transaction: "",
+        payer: buyerAddress,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532);
+
+      expect(result).toEqual(mockResponse);
+      expect(result.success).toBe(false);
+      expect(result.errorReason).toBe("invalid_signature");
+    });
+
+    it("should use custom facilitator URL", async () => {
+      const mockResponse = {
+        success: true,
+        transaction: "0xabcdef1234567890",
+        payer: buyerAddress,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: customFacilitatorUrl });
+      const result = await facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532);
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${customFacilitatorUrl}/deferred/buyers/${buyerAddress}/flush`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            flushAuthorization: mockFlushAuthorization,
+            escrow: escrowAddress,
+            chainId: 84532,
+          }),
+        },
       );
     });
   });

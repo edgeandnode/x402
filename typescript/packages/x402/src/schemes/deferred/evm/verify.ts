@@ -6,10 +6,16 @@ import {
   DeferredPaymentPayload,
   DeferredPaymentRequirements,
   DEFERRRED_SCHEME,
+  DeferredEscrowFlushAuthorizationSigned,
 } from "../../../types/verify/schemes/deferred";
 import { DeferredEscrowDepositAuthorization, VerifyResponse } from "../../../types";
 import { getNetworkId } from "../../../shared";
-import { verifyDepositAuthorizationInner, verifyPermit, verifyVoucher } from "./sign";
+import {
+  verifyDepositAuthorizationInnerSignature,
+  verifyPermitSignature,
+  verifyVoucherSignature,
+  verifyFlushAuthorizationSignature,
+} from "./sign";
 import { ConnectedClient } from "../../../types/shared/evm/wallet";
 import { deferredEscrowABI } from "../../../types/shared/evm/deferredEscrowABI";
 import { usdcABI } from "../../../types/shared/evm/erc20PermitABI";
@@ -253,11 +259,11 @@ export function verifyVoucherContinuity(
  * @param signature - The signature of the voucher
  * @returns Verification result
  */
-export async function verifyVoucherSignature(
+export async function verifyVoucherSignatureWrapper(
   voucher: DeferredEvmPayloadVoucher,
   signature: string,
 ): Promise<VerifyResponse> {
-  const voucherSignatureIsValid = await verifyVoucher(
+  const voucherSignatureIsValid = await verifyVoucherSignature(
     voucher,
     signature as Hex,
     voucher.buyer as Address,
@@ -495,7 +501,7 @@ export async function verifyDepositAuthorization<
 
   // Verify the permit signature
   if (permit) {
-    const isPermitValid = await verifyPermit(
+    const isPermitValid = await verifyPermitSignature(
       permit,
       permit.signature as Hex,
       permit.owner as Address,
@@ -525,7 +531,7 @@ export async function verifyDepositAuthorization<
   }
 
   // Verify deposit authorization signature
-  const isDepositAuthorizationValid = await verifyDepositAuthorizationInner(
+  const isDepositAuthorizationValid = await verifyDepositAuthorizationInnerSignature(
     depositAuthorizationInner,
     depositAuthorizationInner.signature as Hex,
     depositAuthorizationInner.buyer as Address,
@@ -641,6 +647,50 @@ export async function verifyDepositAuthorization<
       invalidReason:
         "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
       payer: voucher.buyer,
+    };
+  }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies a flush authorization is valid. Checks the signature of the flush authorization.
+ *
+ * @param flushAuthorization - The flush authorization to verify
+ * @param escrow - The address of the escrow contract
+ * @param chainId - The chain ID
+ * @returns Verification result
+ */
+export async function verifyFlushAuthorization(
+  flushAuthorization: DeferredEscrowFlushAuthorizationSigned,
+  escrow: Address,
+  chainId: number,
+): Promise<VerifyResponse> {
+  // Verify flush authorization signature
+  const isFlushAuthorizationValid = await verifyFlushAuthorizationSignature(
+    flushAuthorization,
+    flushAuthorization.signature as Hex,
+    flushAuthorization.buyer as Address,
+    chainId,
+    escrow,
+  );
+  if (!isFlushAuthorizationValid) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+      payer: flushAuthorization.buyer,
+    };
+  }
+
+  // Verify flush authorization continuity
+  const DATE_NOW = Math.floor(Date.now() / 1000);
+  if (flushAuthorization.expiry < DATE_NOW) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_continuity",
+      payer: flushAuthorization.buyer,
     };
   }
 
