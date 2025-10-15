@@ -338,3 +338,100 @@ Retrieves settlement history for a voucher.
   }
 }
 ```
+
+### GET /buyers/:buyer/account
+
+Retrieves the escrow account details for a specific buyer, including balance information for a particular seller and asset.
+
+**Request Body:**
+```json
+{
+  "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+  "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+  "chainId": 84532
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "balance": "10000000",
+  "thawingBalance": "2000000",
+  "availableBalance": "8000000",
+  "thawingUntil": 1740759400,
+  "outstandingVouchers": [
+    {
+      "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+      "nonce": 3,
+      "valueAggregate": "6000000"
+    }
+  ]
+}
+```
+
+**Response (400 Bad Request):**
+```json
+{
+  "error": "Invalid parameters"
+}
+```
+
+### POST /buyers/:buyer/flush
+
+Flushes an escrow account using a signed flush authorization. This operation allows a buyer to authorize the facilitator to help them recover escrowed funds by:
+1. Withdrawing any funds that have completed their thawing period
+2. Initiating thawing for any remaining balance
+
+The flush authorization can be either:
+- **Specific flush**: When `seller` and `asset` are provided, flushes only that specific account
+- **Flush all**: When `seller` or `asset` are undefined, flushes all escrow accounts for the buyer
+
+**Request Body:**
+```json
+{
+  "flushAuthorization": {
+    "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+    "nonce": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "expiry": 1740759400,
+    "signature": "0xbfdc3d0a..."
+  },
+  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+  "chainId": 84532
+}
+```
+
+**Request Body (Flush All - seller/asset undefined):**
+```json
+{
+  "flushAuthorization": {
+    "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "nonce": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "expiry": 1740759400,
+    "signature": "0xbfdc3d0a..."
+  },
+  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+  "chainId": 84532
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "transaction": "0xabc123...",
+  "payer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C"
+}
+```
+
+**Response (400 Bad Request):**
+```json
+{
+  "success": false,
+  "errorReason": "invalid_deferred_evm_payload_flush_authorization_signature",
+  "transaction": "",
+  "payer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C"
+}
+```
