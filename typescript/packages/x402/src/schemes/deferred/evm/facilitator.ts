@@ -171,7 +171,6 @@ export async function settle<transport extends Transport, chain extends Chain>(
   const { voucherStore } = DeferredSchemeContextSchema.parse(schemeContext.deferred);
 
   // re-verify to ensure the payment is still valid
-  // TODO: there is some verification duplication as some of the verification steps are repeated later when calling settleVoucher
   const valid = await verify(wallet, paymentPayload, paymentRequirements, schemeContext);
   if (!valid.isValid) {
     return {
@@ -188,6 +187,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
       wallet,
       paymentPayload.payload.voucher,
       paymentPayload.payload.depositAuthorization,
+      false, // Skip reverification - already verified in verify() call above
     );
     if (!depositAuthorizationResponse.success) {
       return {
@@ -208,6 +208,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
     voucher,
     signature,
     voucherStore,
+    false, // Skip reverification - already verified in verify() call above
     depositAuthorization,
   );
 
@@ -221,14 +222,11 @@ export async function settle<transport extends Transport, chain extends Chain>(
  * Executes the voucher settlement transaction. The facilitator can invoke this function directly to settle a
  * voucher in a deferred manner, outside of the x402 handshake.
  *
- * NOTE: Because of its deferred nature, payment requirements are not available when settling in deferred manner
- * which means some of the verification steps cannot be repeated before settlement. However, as long as the voucher
- * has a matching signature and the on chain verification is successful the voucher should be safe to settle.
- *
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param voucher - The voucher to settle
  * @param signature - The signature of the voucher
  * @param voucherStore - The voucher store to use for verification
+ * @param reverify - Rerun the verification steps for the voucher
  * @param depositAuthorization - A deposit authorization to use for verification purposes
  * @returns A PaymentExecutionResponse containing the transaction status and hash
  */
@@ -237,45 +235,49 @@ export async function settleVoucher<transport extends Transport, chain extends C
   voucher: DeferredEvmPayloadVoucher,
   signature: string,
   voucherStore: VoucherStore,
+  reverify: boolean = true,
   depositAuthorization?: DeferredEscrowDepositAuthorization,
 ): Promise<SettleResponse> {
-  // Verify the voucher signature
-  const signatureResult = await verifyVoucherSignatureWrapper(voucher, signature);
-  if (!signatureResult.isValid) {
-    return {
-      success: false,
-      errorReason: signatureResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
-      transaction: "",
-      payer: voucher.buyer,
-    };
-  }
+  if (reverify) {
+    // Verify the voucher signature
+    const signatureResult = await verifyVoucherSignatureWrapper(voucher, signature);
+    if (!signatureResult.isValid) {
+      return {
+        success: false,
+        errorReason:
+          signatureResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: voucher.buyer,
+      };
+    }
 
-  // Verify the voucher exists in the store
-  const storeResult = await verifyVoucherAvailability(
-    voucher,
-    signature,
-    voucher.id,
-    voucher.nonce,
-    voucherStore,
-  );
-  if (!storeResult.isValid) {
-    return {
-      success: false,
-      errorReason: storeResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
-      transaction: "",
-      payer: voucher.buyer,
-    };
-  }
+    // Verify the voucher exists in the store
+    const storeResult = await verifyVoucherAvailability(
+      voucher,
+      signature,
+      voucher.id,
+      voucher.nonce,
+      voucherStore,
+    );
+    if (!storeResult.isValid) {
+      return {
+        success: false,
+        errorReason: storeResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: voucher.buyer,
+      };
+    }
 
-  // Verify the onchain state allows the payment to be settled
-  const valid = await verifyVoucherOnchainState(wallet, voucher, depositAuthorization);
-  if (!valid.isValid) {
-    return {
-      success: false,
-      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
-      transaction: "",
-      payer: voucher.buyer,
-    };
+    // Verify the onchain state allows the payment to be settled
+    const valid = await verifyVoucherOnchainState(wallet, voucher, depositAuthorization);
+    if (!valid.isValid) {
+      return {
+        success: false,
+        errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: voucher.buyer,
+      };
+    }
   }
 
   let tx = "";
@@ -360,42 +362,46 @@ export async function settleVoucher<transport extends Transport, chain extends C
  * @param wallet - The facilitator wallet that will submit the transaction
  * @param voucher - The voucher that the deposit authorization is escrowing for
  * @param depositAuthorization - The deposit authorization
+ * @param reverify - Rerun the verification steps for the deposit authorization
  * @returns A PaymentExecutionResponse containing the transaction status and hash
  */
 export async function depositWithAuthorization<transport extends Transport, chain extends Chain>(
   wallet: SignerWallet<chain, transport>,
   voucher: DeferredEvmPayloadVoucher,
   depositAuthorization: DeferredEscrowDepositAuthorization,
+  reverify: boolean = true,
 ): Promise<DeferredDepositWithAuthorizationResponse> {
-  // Verify the deposit authorization
-  const valid = await verifyDepositAuthorizationSignatureAndContinuity(
-    voucher,
-    depositAuthorization,
-  );
-  if (!valid.isValid) {
-    return {
-      success: false,
-      errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
-      transaction: "",
-      payer: depositAuthorization.depositAuthorization.buyer,
-    };
-  }
+  if (reverify) {
+    // Verify the deposit authorization
+    const valid = await verifyDepositAuthorizationSignatureAndContinuity(
+      voucher,
+      depositAuthorization,
+    );
+    if (!valid.isValid) {
+      return {
+        success: false,
+        errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: depositAuthorization.depositAuthorization.buyer,
+      };
+    }
 
-  // Verify the onchain state allows the deposit authorization to be executed
-  const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
-    wallet,
-    voucher,
-    depositAuthorization,
-  );
-  if (!depositAuthorizationOnchainResult.isValid) {
-    return {
-      success: false,
-      errorReason:
-        depositAuthorizationOnchainResult.invalidReason ??
-        "invalid_deferred_evm_payload_no_longer_valid",
-      transaction: "",
-      payer: depositAuthorization.depositAuthorization.buyer,
-    };
+    // Verify the onchain state allows the deposit authorization to be executed
+    const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
+      wallet,
+      voucher,
+      depositAuthorization,
+    );
+    if (!depositAuthorizationOnchainResult.isValid) {
+      return {
+        success: false,
+        errorReason:
+          depositAuthorizationOnchainResult.invalidReason ??
+          "invalid_deferred_evm_payload_no_longer_valid",
+        transaction: "",
+        payer: depositAuthorization.depositAuthorization.buyer,
+      };
+    }
   }
 
   const { permit, depositAuthorization: depositAuthorizationInnerWithSignature } =
