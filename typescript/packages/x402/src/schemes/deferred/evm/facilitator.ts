@@ -34,11 +34,12 @@ import { usdcABI } from "../../../types/shared/evm/erc20PermitABI";
 import {
   verifyPaymentRequirements,
   verifyVoucherSignatureWrapper,
-  verifyOnchainState,
+  verifyVoucherOnchainState,
   verifyVoucherContinuity,
   verifyVoucherAvailability,
-  verifyDepositAuthorization,
+  verifyDepositAuthorizationSignatureAndContinuity,
   verifyFlushAuthorization,
+  verifyDepositAuthorizationOnchainState,
 } from "./verify";
 import { VoucherStore } from "./store";
 
@@ -107,8 +108,31 @@ export async function verify<
     }
   }
 
+  // Verify deposit authorization signature and continuity
+  if (paymentPayload.payload.depositAuthorization) {
+    const depositAuthorizationResult = await verifyDepositAuthorizationSignatureAndContinuity(
+      paymentPayload.payload.voucher,
+      paymentPayload.payload.depositAuthorization,
+    );
+    if (!depositAuthorizationResult.isValid) {
+      return depositAuthorizationResult;
+    }
+  }
+
+  // Verify the onchain state allows the deposit authorization to be executed
+  if (paymentPayload.payload.depositAuthorization) {
+    const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
+      client,
+      paymentPayload.payload.voucher,
+      paymentPayload.payload.depositAuthorization,
+    );
+    if (!depositAuthorizationOnchainResult.isValid) {
+      return depositAuthorizationOnchainResult;
+    }
+  }
+
   // Verify the onchain state allows the payment to be settled
-  const onchainResult = await verifyOnchainState(
+  const onchainResult = await verifyVoucherOnchainState(
     client,
     paymentPayload.payload.voucher,
     paymentPayload.payload.depositAuthorization,
@@ -244,7 +268,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
   }
 
   // Verify the onchain state allows the payment to be settled
-  const valid = await verifyOnchainState(wallet, voucher, depositAuthorization);
+  const valid = await verifyVoucherOnchainState(wallet, voucher, depositAuthorization);
   if (!valid.isValid) {
     return {
       success: false,
@@ -344,11 +368,31 @@ export async function depositWithAuthorization<transport extends Transport, chai
   depositAuthorization: DeferredEscrowDepositAuthorization,
 ): Promise<DeferredDepositWithAuthorizationResponse> {
   // Verify the deposit authorization
-  const valid = await verifyDepositAuthorization(wallet, voucher, depositAuthorization);
+  const valid = await verifyDepositAuthorizationSignatureAndContinuity(
+    voucher,
+    depositAuthorization,
+  );
   if (!valid.isValid) {
     return {
       success: false,
       errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+      transaction: "",
+      payer: depositAuthorization.depositAuthorization.buyer,
+    };
+  }
+
+  // Verify the onchain state allows the deposit authorization to be executed
+  const depositAuthorizationOnchainResult = await verifyDepositAuthorizationOnchainState(
+    wallet,
+    voucher,
+    depositAuthorization,
+  );
+  if (!depositAuthorizationOnchainResult.isValid) {
+    return {
+      success: false,
+      errorReason:
+        depositAuthorizationOnchainResult.invalidReason ??
+        "invalid_deferred_evm_payload_no_longer_valid",
       transaction: "",
       payer: depositAuthorization.depositAuthorization.buyer,
     };

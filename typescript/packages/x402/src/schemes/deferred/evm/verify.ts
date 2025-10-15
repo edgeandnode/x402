@@ -374,10 +374,10 @@ export function verifyVoucherDuplicate(
  *
  * @param client - The client to use for the onchain state verification
  * @param voucher - The voucher to verify
- * @param depositAuthorization - The deposit authorization to verify
+ * @param depositAuthorization - An already verified deposit authorization, used to consider additional balance to the buyer's account
  * @returns Verification result
  */
-export async function verifyOnchainState<
+export async function verifyVoucherOnchainState<
   transport extends Transport,
   chain extends Chain,
   account extends Account | undefined,
@@ -395,20 +395,11 @@ export async function verifyOnchainState<
     };
   }
 
-  // If a deposit authorization is provided and valid we consider it as additional balance in the escrow deposit
-  let authorizationBalance = 0n;
-  if (depositAuthorization) {
-    // Verify the deposit authorization is valid for the voucher asset and chain id
-    const depositAuthorizationResult = await verifyDepositAuthorization(
-      client,
-      voucher,
-      depositAuthorization,
-    );
-    if (!depositAuthorizationResult.isValid) {
-      return depositAuthorizationResult;
-    }
-    authorizationBalance = BigInt(depositAuthorization.depositAuthorization.amount);
-  }
+  // If a deposit authorization is provided we consider it as additional balance in the escrow deposit
+  // Note that we do not verify the validity of the deposit authorization here
+  let authorizationBalance = depositAuthorization
+    ? BigInt(depositAuthorization.depositAuthorization.amount)
+    : 0n;
 
   // Verify buyer has sufficient asset balance in the escrow contract
   // buyer has to cover the outstanding amount
@@ -478,19 +469,119 @@ export async function verifyOnchainState<
 }
 
 /**
- * Verifies a deposit authorization is valid. Checks the signature of the permit and the deposit authorization.
+ * Verifies the onchain state allows a deposit authorization to be executed.
+ *
+ * - ✅ (on-chain) Verifies escrow can pull from the buyer's account based on their allowance (or permit)
+ * - ✅ (on-chain) If there is a permit, it verifies permit nonce is valid
+ * - ✅ (on-chain) Verifies deposit authorization nonce has not been used
+ * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param client - The client to use for the onchain state verification
- * @param voucher - The voucher that the deposit authorization is escrowing for
+ * @param voucher - The voucher to verify
  * @param depositAuthorization - The deposit authorization to verify
  * @returns Verification result
  */
-export async function verifyDepositAuthorization<
+export async function verifyDepositAuthorizationOnchainState<
   transport extends Transport,
   chain extends Chain,
   account extends Account | undefined,
 >(
   client: ConnectedClient<transport, chain, account>,
+  voucher: DeferredEvmPayloadVoucher,
+  depositAuthorization: DeferredEscrowDepositAuthorization,
+): Promise<VerifyResponse> {
+  // Verify escrow can pull from the buyer's account based on their allowance (or permit)
+  // Consider current allowance if there is no permit
+  let allowance = 0n;
+  if (!depositAuthorization.permit) {
+    try {
+      allowance = await client.readContract({
+        address: voucher.asset as Address,
+        abi: usdcABI,
+        functionName: "allowance",
+        args: [voucher.buyer as Address, voucher.escrow as Address],
+      });
+    } catch {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_contract_call_failed_allowance",
+        payer: voucher.buyer,
+      };
+    }
+  } else {
+    allowance = BigInt(depositAuthorization.permit.value);
+  }
+
+  if (BigInt(depositAuthorization.depositAuthorization.amount) > allowance) {
+    return {
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
+      payer: depositAuthorization.depositAuthorization.buyer,
+    };
+  }
+
+  // Verify permit nonce
+  if (depositAuthorization.permit) {
+    try {
+      const permitNonce = await client.readContract({
+        address: voucher.asset as Address,
+        abi: usdcABI,
+        functionName: "nonces",
+        args: [voucher.buyer as Address],
+      });
+      if (permitNonce !== BigInt(depositAuthorization.permit.nonce)) {
+        return {
+          isValid: false,
+          invalidReason: "invalid_deferred_evm_payload_permit_nonce_invalid",
+          payer: voucher.buyer,
+        };
+      }
+    } catch {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
+        payer: voucher.buyer,
+      };
+    }
+  }
+
+  // Verify deposit authorization nonce
+  try {
+    const nonceUsed = await client.readContract({
+      address: voucher.escrow as Address,
+      abi: deferredEscrowABI,
+      functionName: "isDepositAuthorizationNonceUsed",
+      args: [voucher.buyer as Address, depositAuthorization.depositAuthorization.nonce as Hex],
+    });
+    if (nonceUsed) {
+      return {
+        isValid: false,
+        invalidReason: "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
+        payer: voucher.buyer,
+      };
+    }
+  } catch {
+    return {
+      isValid: false,
+      invalidReason:
+        "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
+      payer: voucher.buyer,
+    };
+  }
+
+  return {
+    isValid: true,
+  };
+}
+
+/**
+ * Verifies a deposit authorization is valid. Checks the signature of the permit and the deposit authorization.
+ *
+ * @param voucher - The voucher that the deposit authorization is escrowing for
+ * @param depositAuthorization - The deposit authorization to verify
+ * @returns Verification result
+ */
+export async function verifyDepositAuthorizationSignatureAndContinuity(
   voucher: DeferredEvmPayloadVoucher,
   depositAuthorization: DeferredEscrowDepositAuthorization,
 ): Promise<VerifyResponse> {
@@ -569,85 +660,6 @@ export async function verifyDepositAuthorization<
         payer: depositAuthorizationInner.buyer,
       };
     }
-  }
-
-  // Verify escrow can pull from the buyer's account based on their allowance (or permit)
-  // Consider current allowance if there is no permit
-  let allowance = 0n;
-  if (!permit) {
-    try {
-      allowance = await client.readContract({
-        address: voucher.asset as Address,
-        abi: usdcABI,
-        functionName: "allowance",
-        args: [voucher.buyer as Address, voucher.escrow as Address],
-      });
-    } catch {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_contract_call_failed_allowance",
-        payer: voucher.buyer,
-      };
-    }
-  } else {
-    allowance = BigInt(permit.value);
-  }
-
-  if (BigInt(depositAuthorizationInner.amount) > allowance) {
-    return {
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_insufficient_allowance",
-      payer: depositAuthorizationInner.buyer,
-    };
-  }
-
-  // Verify permit nonce
-  if (permit) {
-    try {
-      const permitNonce = await client.readContract({
-        address: voucher.asset as Address,
-        abi: usdcABI,
-        functionName: "nonces",
-        args: [voucher.buyer as Address],
-      });
-      if (permitNonce !== BigInt(permit.nonce)) {
-        return {
-          isValid: false,
-          invalidReason: "invalid_deferred_evm_payload_permit_nonce_invalid",
-          payer: voucher.buyer,
-        };
-      }
-    } catch {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_contract_call_failed_nonces",
-        payer: voucher.buyer,
-      };
-    }
-  }
-
-  // Verify deposit authorization nonce
-  try {
-    const nonceUsed = await client.readContract({
-      address: voucher.escrow as Address,
-      abi: deferredEscrowABI,
-      functionName: "isDepositAuthorizationNonceUsed",
-      args: [voucher.buyer as Address, depositAuthorizationInner.nonce as Hex],
-    });
-    if (nonceUsed) {
-      return {
-        isValid: false,
-        invalidReason: "invalid_deferred_evm_payload_deposit_authorization_nonce_invalid",
-        payer: voucher.buyer,
-      };
-    }
-  } catch {
-    return {
-      isValid: false,
-      invalidReason:
-        "invalid_deferred_evm_contract_call_failed_is_deposit_authorization_nonce_used",
-      payer: voucher.buyer,
-    };
   }
 
   return {

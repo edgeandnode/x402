@@ -20,8 +20,9 @@ vi.mock("./verify", () => ({
   verifyVoucherContinuity: vi.fn(),
   verifyVoucherSignatureWrapper: vi.fn(),
   verifyVoucherAvailability: vi.fn(),
-  verifyOnchainState: vi.fn(),
-  verifyDepositAuthorization: vi.fn(),
+  verifyVoucherOnchainState: vi.fn(),
+  verifyDepositAuthorizationSignatureAndContinuity: vi.fn(),
+  verifyDepositAuthorizationOnchainState: vi.fn(),
   verifyFlushAuthorization: vi.fn(),
 }));
 
@@ -119,7 +120,7 @@ describe("facilitator - verify", () => {
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
   });
 
   afterEach(() => {
@@ -230,7 +231,7 @@ describe("facilitator - verify", () => {
   });
 
   it("should return invalid response when onchain state verification fails", async () => {
-    vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({
       isValid: false,
       invalidReason: "insufficient_funds",
       payer: buyerAddress,
@@ -310,7 +311,7 @@ describe("facilitator - settle", () => {
     vi.mocked(verifyModule.verifyPaymentRequirements).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherContinuity).mockReturnValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
     // Mock successful voucher store settlement
@@ -412,7 +413,7 @@ describe("facilitator - settleVoucher", () => {
 
     // Mock successful verification by default
     vi.mocked(verifyModule.verifyVoucherSignatureWrapper).mockResolvedValue({ isValid: true });
-    vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({ isValid: true });
     vi.mocked(verifyModule.verifyVoucherAvailability).mockResolvedValue({ isValid: true });
 
     // Mock successful voucher store settlement
@@ -503,7 +504,7 @@ describe("facilitator - settleVoucher", () => {
   });
 
   it("should return error when onchain state verification fails", async () => {
-    vi.mocked(verifyModule.verifyOnchainState).mockResolvedValue({
+    vi.mocked(verifyModule.verifyVoucherOnchainState).mockResolvedValue({
       isValid: false,
       invalidReason: "insufficient_funds",
     });
@@ -649,7 +650,14 @@ describe("facilitator - depositWithAuthorization", () => {
     vi.clearAllMocks();
 
     // Mock successful verification by default
-    vi.mocked(verifyModule.verifyDepositAuthorization).mockResolvedValue({ isValid: true });
+    vi.mocked(verifyModule.verifyDepositAuthorizationSignatureAndContinuity).mockResolvedValue({
+      isValid: true,
+    });
+
+    // Mock successful onchain state verification by default
+    vi.mocked(verifyModule.verifyDepositAuthorizationOnchainState).mockResolvedValue({
+      isValid: true,
+    });
 
     // Create a proper mock wallet with all required properties
     mockWallet = {
@@ -754,7 +762,7 @@ describe("facilitator - depositWithAuthorization", () => {
   });
 
   it("should return error when deposit authorization verification fails", async () => {
-    vi.mocked(verifyModule.verifyDepositAuthorization).mockResolvedValue({
+    vi.mocked(verifyModule.verifyDepositAuthorizationSignatureAndContinuity).mockResolvedValue({
       isValid: false,
       invalidReason: "invalid_deferred_evm_payload_permit_signature",
     });

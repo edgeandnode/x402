@@ -9,11 +9,12 @@ import {
 import {
   verifyPaymentRequirements,
   verifyVoucherSignatureWrapper,
-  verifyOnchainState,
+  verifyVoucherOnchainState,
   verifyVoucherContinuity,
   verifyVoucherAvailability,
   verifyVoucherDuplicate,
-  verifyDepositAuthorization,
+  verifyDepositAuthorizationSignatureAndContinuity,
+  verifyDepositAuthorizationOnchainState,
   verifyFlushAuthorization,
 } from "./verify";
 import { ConnectedClient, createSigner } from "../../../types/shared/evm/wallet";
@@ -1162,13 +1163,13 @@ describe("verifyOnchainState", () => {
         thawingAmount: BigInt(0),
         thawEndTime: BigInt(0),
       });
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
     expect(result).toEqual({ isValid: true });
   });
 
   it("should return error if client network mismatch", async () => {
     mockClient.chain.id = 1;
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_client_network",
@@ -1178,7 +1179,7 @@ describe("verifyOnchainState", () => {
 
   it("should return error if outstanding amount check fails", async () => {
     vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_contract_call_failed_outstanding_amount",
@@ -1190,7 +1191,7 @@ describe("verifyOnchainState", () => {
     vi.mocked(mockClient.readContract)
       .mockResolvedValueOnce([BigInt(1_000_000)])
       .mockRejectedValueOnce(new Error("Contract call failed"));
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "invalid_deferred_evm_contract_call_failed_account",
@@ -1209,7 +1210,7 @@ describe("verifyOnchainState", () => {
         thawEndTime: BigInt(0),
       });
 
-    const result = await verifyOnchainState(mockClient, mockPaymentPayload.payload.voucher);
+    const result = await verifyVoucherOnchainState(mockClient, mockPaymentPayload.payload.voucher);
     expect(result).toEqual({
       isValid: false,
       invalidReason: "insufficient_funds",
@@ -1218,7 +1219,130 @@ describe("verifyOnchainState", () => {
   });
 });
 
-describe("verifyDepositAuthorization", () => {
+describe("verifyDepositAuthorizationSignatureAndContinuity", () => {
+  const mockVoucher = {
+    id: voucherId,
+    buyer: buyerAddress,
+    seller: sellerAddress,
+    valueAggregate: "1000000",
+    asset: assetAddress,
+    timestamp: 1715769600,
+    nonce: 0,
+    escrow: escrowAddress,
+    chainId: 84532,
+    expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30, // 30 days
+  };
+
+  const mockDepositAuthorizationWithPermit = {
+    permit: {
+      owner: buyerAddress,
+      spender: escrowAddress,
+      value: "1000000",
+      nonce: "0",
+      deadline: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      domain: {
+        name: "USD Coin",
+        version: "2",
+      },
+      signature:
+        "0x1ed1158f8c70dc6393f8c9a379bf4569eb13a0ae6f060465418cbb9acbf5fb536eda5bdb7a6a28317329df0b9aec501fdf15f02f04b60ac536b90da3ce6f3efb1c" as `0x${string}`,
+    },
+    depositAuthorization: {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: "1000000",
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    },
+  };
+
+  const mockDepositAuthorizationWithoutPermit = {
+    depositAuthorization: {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: assetAddress,
+      amount: "1000000",
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(mockVoucher.timestamp * 1000 + 100000)); // 100 seconds after voucher timestamp
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+  });
+
+  it("should return valid if deposit authorization is valid with permit", async () => {
+    const result = await verifyDepositAuthorizationSignatureAndContinuity(
+      mockVoucher,
+      mockDepositAuthorizationWithPermit,
+    );
+    expect(result).toEqual({ isValid: true });
+  });
+
+  it("should return valid if deposit authorization is valid without permit", async () => {
+    const result = await verifyDepositAuthorizationSignatureAndContinuity(
+      mockVoucher,
+      mockDepositAuthorizationWithoutPermit,
+    );
+    expect(result).toEqual({ isValid: true });
+  });
+
+  it("should return error if permit signature is invalid", async () => {
+    const invalidPermit = {
+      ...mockDepositAuthorizationWithPermit,
+      permit: {
+        ...mockDepositAuthorizationWithPermit.permit!,
+        signature:
+          "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c" as `0x${string}`,
+      },
+    };
+
+    const result = await verifyDepositAuthorizationSignatureAndContinuity(
+      mockVoucher,
+      invalidPermit,
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_permit_signature",
+      payer: buyerAddress,
+    });
+  });
+
+  it("should return error if deposit authorization signature is invalid", async () => {
+    const invalidDepositAuth = {
+      ...mockDepositAuthorizationWithPermit,
+      depositAuthorization: {
+        ...mockDepositAuthorizationWithPermit.depositAuthorization,
+        signature:
+          "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c" as `0x${string}`,
+      },
+    };
+
+    const result = await verifyDepositAuthorizationSignatureAndContinuity(
+      mockVoucher,
+      invalidDepositAuth,
+    );
+    expect(result).toEqual({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_signature",
+      payer: buyerAddress,
+    });
+  });
+});
+
+describe("verifyDepositAuthorizationOnchainState", () => {
   const mockVoucher = {
     id: voucherId,
     buyer: buyerAddress,
@@ -1293,7 +1417,7 @@ describe("verifyDepositAuthorization", () => {
       .mockResolvedValueOnce(BigInt(0)) // permit nonce
       .mockResolvedValueOnce(false); // deposit authorization nonce not used
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithPermit,
@@ -1306,7 +1430,7 @@ describe("verifyDepositAuthorization", () => {
       .mockResolvedValueOnce(BigInt(2000000)) // allowance (sufficient)
       .mockResolvedValueOnce(false); // deposit authorization nonce not used
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithoutPermit,
@@ -1314,46 +1438,10 @@ describe("verifyDepositAuthorization", () => {
     expect(result).toEqual({ isValid: true });
   });
 
-  it("should return error if permit signature is invalid", async () => {
-    const invalidPermit = {
-      ...mockDepositAuthorizationWithPermit,
-      permit: {
-        ...mockDepositAuthorizationWithPermit.permit!,
-        signature:
-          "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c" as `0x${string}`,
-      },
-    };
-
-    const result = await verifyDepositAuthorization(mockClient, mockVoucher, invalidPermit);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_permit_signature",
-      payer: buyerAddress,
-    });
-  });
-
-  it("should return error if deposit authorization signature is invalid", async () => {
-    const invalidDepositAuth = {
-      ...mockDepositAuthorizationWithPermit,
-      depositAuthorization: {
-        ...mockDepositAuthorizationWithPermit.depositAuthorization,
-        signature:
-          "0x999b52ba76bebfc79405b67d9004ed769a998b34a6be8695c265f32fee56b1a903f563f2abe1e02cc022e332e2cef2c146fb057567316966303480afdd88aff11c" as `0x${string}`,
-      },
-    };
-
-    const result = await verifyDepositAuthorization(mockClient, mockVoucher, invalidDepositAuth);
-    expect(result).toEqual({
-      isValid: false,
-      invalidReason: "invalid_deferred_evm_payload_deposit_authorization_signature",
-      payer: buyerAddress,
-    });
-  });
-
   it("should return error if allowance is insufficient when no permit", async () => {
     vi.mocked(mockClient.readContract).mockResolvedValueOnce(BigInt(500000)); // allowance too low
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithoutPermit,
@@ -1368,7 +1456,7 @@ describe("verifyDepositAuthorization", () => {
   it("should return error if allowance check fails when no permit", async () => {
     vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithoutPermit,
@@ -1383,7 +1471,7 @@ describe("verifyDepositAuthorization", () => {
   it("should return error if permit nonce is invalid", async () => {
     vi.mocked(mockClient.readContract).mockResolvedValueOnce(BigInt(5)); // Different nonce
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithPermit,
@@ -1398,7 +1486,7 @@ describe("verifyDepositAuthorization", () => {
   it("should return error if permit nonce check fails", async () => {
     vi.mocked(mockClient.readContract).mockRejectedValueOnce(new Error("Contract call failed"));
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithPermit,
@@ -1415,7 +1503,7 @@ describe("verifyDepositAuthorization", () => {
       .mockResolvedValueOnce(BigInt(0)) // permit nonce ok
       .mockResolvedValueOnce(true); // deposit authorization nonce already used
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithPermit,
@@ -1432,7 +1520,7 @@ describe("verifyDepositAuthorization", () => {
       .mockResolvedValueOnce(BigInt(0)) // permit nonce ok
       .mockRejectedValueOnce(new Error("Contract call failed"));
 
-    const result = await verifyDepositAuthorization(
+    const result = await verifyDepositAuthorizationOnchainState(
       mockClient,
       mockVoucher,
       mockDepositAuthorizationWithPermit,
