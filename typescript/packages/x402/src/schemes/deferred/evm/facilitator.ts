@@ -547,17 +547,26 @@ export async function flushWithAuthorization<transport extends Transport, chain 
     };
   }
 
+  const { seller, asset } = flushAuthorization;
+  const flushAll = seller == undefined || asset == undefined;
+
   let tx = "";
   try {
     tx = await wallet.writeContract({
       address: escrow as Address,
       abi: deferredEscrowABI,
-      functionName: "flushWithAuthorization" as const,
+      functionName: flushAll
+        ? ("flushAllWithAuthorization" as const)
+        : ("flushWithAuthorization" as const),
       args: [
         {
           buyer: getAddress(flushAuthorization.buyer),
-          seller: getAddress(flushAuthorization.seller),
-          asset: getAddress(flushAuthorization.asset),
+          ...(flushAll
+            ? {}
+            : {
+                seller: getAddress(seller),
+                asset: getAddress(asset),
+              }),
           nonce: flushAuthorization.nonce as `0x${string}`,
           expiry: BigInt(flushAuthorization.expiry),
         },

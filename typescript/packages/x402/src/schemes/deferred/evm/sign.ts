@@ -9,6 +9,7 @@ import {
   permitPrimaryType,
   depositAuthorizationPrimaryType,
   flushAuthorizationPrimaryType,
+  flushAllAuthorizationPrimaryType,
 } from "../../../types/shared/evm";
 import {
   DeferredEscrowDepositAuthorizationInner,
@@ -293,6 +294,8 @@ export async function verifyDepositAuthorizationInnerSignature(
 /**
  * Signs a flush authorization
  *
+ * The function will sign a FlushAuthorization or FlushAllAuthorization depending on the presence of a seller and asset in the message.
+ *
  * @param walletClient - The wallet client that will sign the authorization
  * @param flushAuthorization - The flush authorization to sign
  * @param chainId - The chain ID
@@ -306,9 +309,11 @@ export async function signFlushAuthorization<transport extends Transport, chain 
   escrow: Address,
 ): Promise<{ signature: Hex }> {
   const { buyer, seller, asset, nonce, expiry } = flushAuthorization;
+  const flushAll = seller == undefined || asset == undefined;
+  const primaryType = flushAll ? flushAllAuthorizationPrimaryType : flushAuthorizationPrimaryType;
   const data = {
     types: typedDataTypes,
-    primaryType: flushAuthorizationPrimaryType,
+    primaryType: primaryType,
     domain: {
       name: "DeferredPaymentEscrow",
       version: "1",
@@ -317,8 +322,12 @@ export async function signFlushAuthorization<transport extends Transport, chain 
     },
     message: {
       buyer: getAddress(buyer),
-      seller: getAddress(seller),
-      asset: getAddress(asset),
+      ...(flushAll
+        ? {}
+        : {
+            seller: getAddress(seller),
+            asset: getAddress(asset),
+          }),
       nonce,
       expiry,
     },
@@ -342,6 +351,8 @@ export async function signFlushAuthorization<transport extends Transport, chain 
 /**
  * Verifies a flush authorization signature
  *
+ * The function will verify a FlushAuthorization or FlushAllAuthorization depending on the presence of a seller and asset in the message.
+ *
  * @param flushAuthorization - The flush authorization to verify
  * @param signature - The signature to verify
  * @param signer - The address of the signer to verify
@@ -356,9 +367,12 @@ export async function verifyFlushAuthorizationSignature(
   chainId: number,
   escrow: Address,
 ) {
+  const { seller, asset } = flushAuthorization;
+  const flushAll = seller == undefined || asset == undefined;
+  const primaryType = flushAll ? flushAllAuthorizationPrimaryType : flushAuthorizationPrimaryType;
   const flushAuthorizationTypedData = {
     types: typedDataTypes,
-    primaryType: flushAuthorizationPrimaryType,
+    primaryType: primaryType,
     domain: {
       name: "DeferredPaymentEscrow",
       version: "1",
@@ -367,8 +381,12 @@ export async function verifyFlushAuthorizationSignature(
     },
     message: {
       buyer: getAddress(flushAuthorization.buyer),
-      seller: getAddress(flushAuthorization.seller),
-      asset: getAddress(flushAuthorization.asset),
+      ...(flushAll
+        ? {}
+        : {
+            seller: getAddress(seller),
+            asset: getAddress(asset),
+          }),
       nonce: flushAuthorization.nonce,
       expiry: flushAuthorization.expiry,
     },

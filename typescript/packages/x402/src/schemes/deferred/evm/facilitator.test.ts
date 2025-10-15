@@ -1323,4 +1323,154 @@ describe("facilitator - flushWithAuthorization", () => {
       payer: buyerAddress,
     });
   });
+
+  it("should call flushAllWithAuthorization when seller is undefined", async () => {
+    const mockFlushAllAuthorization = {
+      buyer: buyerAddress,
+      seller: undefined,
+      asset: undefined,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    };
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAllAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract once (flushAllWithAuthorization)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+
+    // Verify flushAllWithAuthorization call
+    const flushCall = vi.mocked(mockWallet.writeContract).mock.calls[0][0];
+    expect(flushCall).toMatchObject({
+      address: escrowAddress,
+      functionName: "flushAllWithAuthorization",
+    });
+
+    // Verify the args structure (no seller/asset in args)
+    expect(flushCall.args?.[0]).toMatchObject({
+      buyer: buyerAddress,
+      nonce: mockFlushAllAuthorization.nonce,
+    });
+    expect((flushCall.args?.[0] as { expiry: bigint }).expiry).toBe(
+      BigInt(mockFlushAllAuthorization.expiry),
+    );
+    expect(flushCall.args?.[1]).toBe(mockFlushAllAuthorization.signature);
+    // Ensure seller and asset are NOT in the args
+    expect(flushCall.args?.[0]).not.toHaveProperty("seller");
+    expect(flushCall.args?.[0]).not.toHaveProperty("asset");
+  });
+
+  it("should call flushAllWithAuthorization when asset is undefined", async () => {
+    const mockFlushAllAuthorization = {
+      buyer: buyerAddress,
+      seller: sellerAddress,
+      asset: undefined,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    };
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAllAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: true,
+      transaction: "0x1234567890abcdef",
+      payer: buyerAddress,
+    });
+
+    // Should have called writeContract once (flushAllWithAuthorization)
+    expect(mockWallet.writeContract).toHaveBeenCalledTimes(1);
+
+    // Verify flushAllWithAuthorization call
+    const flushCall = vi.mocked(mockWallet.writeContract).mock.calls[0][0];
+    expect(flushCall).toMatchObject({
+      address: escrowAddress,
+      functionName: "flushAllWithAuthorization",
+    });
+
+    // Verify the args structure (no seller/asset in args)
+    expect(flushCall.args?.[0]).toMatchObject({
+      buyer: buyerAddress,
+      nonce: mockFlushAllAuthorization.nonce,
+    });
+    expect((flushCall.args?.[0] as { expiry: bigint }).expiry).toBe(
+      BigInt(mockFlushAllAuthorization.expiry),
+    );
+    expect(flushCall.args?.[1]).toBe(mockFlushAllAuthorization.signature);
+  });
+
+  it("should handle flushAllWithAuthorization verification failure", async () => {
+    const mockFlushAllAuthorization = {
+      buyer: buyerAddress,
+      seller: undefined,
+      asset: undefined,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    };
+
+    vi.mocked(verifyModule.verifyFlushAuthorization).mockResolvedValue({
+      isValid: false,
+      invalidReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+    });
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAllAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_deferred_evm_payload_flush_authorization_signature",
+      transaction: "",
+      payer: buyerAddress,
+    });
+
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("should handle flushAllWithAuthorization transaction revert", async () => {
+    const mockFlushAllAuthorization = {
+      buyer: buyerAddress,
+      seller: undefined,
+      asset: undefined,
+      nonce: "0x0000000000000000000000000000000000000000000000000000000000000000",
+      expiry: 1715769600 + 1000 * 60 * 60 * 24 * 30,
+      signature:
+        "0xbfdc3d0ae7663255972fdf5ce6dfc7556a5ac1da6768e4f4a942a2fa885737db5ddcb7385de4f4b6d483b97beb6a6103b46971f63905a063deb7b0cfc33473411b" as `0x${string}`,
+    };
+
+    vi.mocked(mockWallet.writeContract).mockRejectedValueOnce(new Error("Flush all failed"));
+
+    const result = await flushWithAuthorization(
+      mockWallet,
+      mockFlushAllAuthorization,
+      escrowAddress as `0x${string}`,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorReason: "invalid_transaction_reverted",
+      transaction: "",
+      payer: buyerAddress,
+    });
+  });
 });

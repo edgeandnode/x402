@@ -153,8 +153,8 @@ export type DeferredEscrowDepositAuthorization = z.infer<
 // x402DeferredEscrowFlushAuthorization
 export const DeferredEscrowFlushAuthorizationSchema = z.object({
   buyer: z.string().regex(EvmAddressRegex),
-  seller: z.string().regex(EvmAddressRegex),
-  asset: z.string().regex(EvmAddressRegex),
+  seller: z.string().regex(EvmAddressRegex).optional(),
+  asset: z.string().regex(EvmAddressRegex).optional(),
   nonce: z.string().regex(HexEncoded64ByteRegex),
   expiry: z.number().int().nonnegative(),
 });
