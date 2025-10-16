@@ -20,6 +20,7 @@ import {
   PaymentRequirements,
   PaymentRequirementsSchema,
   DeferredEscrowDepositAuthorizationConfig,
+  X402Config,
 } from "x402/types";
 
 /**
@@ -34,6 +35,7 @@ import {
  * @param axiosClient - The Axios instance to add the interceptor to
  * @param walletClient - A wallet client that can sign transactions and create payment headers
  * @param paymentRequirementsSelector - A function that selects the payment requirements from the response
+ * @param config - Optional configuration for X402 operations (e.g., custom RPC URLs)
  * @returns The modified Axios instance with the payment interceptor
  *
  * @example
@@ -41,6 +43,14 @@ import {
  * const client = withPaymentInterceptor(
  *   axios.create(),
  *   signer
+ * );
+ *
+ * // With custom RPC configuration
+ * const client = withPaymentInterceptor(
+ *   axios.create(),
+ *   signer,
+ *   undefined,
+ *   { svmConfig: { rpcUrl: "http://localhost:8899" } }
  * );
  *
  * // The client will automatically handle 402 responses
@@ -51,6 +61,7 @@ export function withPaymentInterceptor(
   axiosClient: AxiosInstance,
   walletClient: Signer | MultiNetworkSigner,
   paymentRequirementsSelector: PaymentRequirementsSelector = selectPaymentRequirements,
+  config?: X402Config,
 ) {
   axiosClient.interceptors.response.use(
     response => response,
@@ -92,6 +103,7 @@ export function withPaymentInterceptor(
           walletClient,
           x402Version,
           selectedPaymentRequirements,
+          config,
         );
 
         (originalConfig as { __is402Retry?: boolean }).__is402Retry = true;
@@ -205,7 +217,7 @@ export function withDeferredPaymentInterceptor(
           walletClient,
           x402Version,
           selectedDeferredPaymentRequirements,
-          extraPayload,
+          { extraPayload },
         );
 
         (originalConfig as { __is402Retry?: boolean }).__is402Retry = true;
@@ -225,5 +237,6 @@ export function withDeferredPaymentInterceptor(
 }
 
 export { decodeXPaymentResponse } from "x402/shared";
-export { createSigner, type Signer, type MultiNetworkSigner } from "x402/types";
+export { createSigner, type Signer, type MultiNetworkSigner, type X402Config } from "x402/types";
+export { type PaymentRequirementsSelector } from "x402/client";
 export type { Hex } from "viem";

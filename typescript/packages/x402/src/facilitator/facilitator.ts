@@ -2,6 +2,7 @@ import { verify as verifyExactEvm, settle as settleExactEvm } from "../schemes/e
 import { verify as verifyExactSvm, settle as settleExactSvm } from "../schemes/exact/svm";
 import { verify as verifyDeferred, settle as settleDeferred } from "../schemes/deferred/evm";
 import { SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
+import { X402Config } from "../types/config";
 import {
   ConnectedClient as EvmConnectedClient,
   SignerWallet as EvmSignerWallet,
@@ -10,7 +11,6 @@ import { ConnectedClient, Signer } from "../types/shared/wallet";
 import {
   PaymentPayload,
   PaymentRequirements,
-  SchemeContext,
   SettleResponse,
   VerifyResponse,
   ExactEvmPayload,
@@ -29,7 +29,7 @@ import { EXACT_SCHEME } from "../types/verify/schemes/exact";
  * @param client - The public client used for blockchain interactions
  * @param payload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
- * @param schemeContext - Scheme specific context for verification
+ * @param config - Optional configuration for X402 operations (e.g., custom RPC URLs)
  * @returns A ValidPaymentRequest indicating if the payment is valid and any invalidation reason
  */
 export async function verify<
@@ -40,7 +40,7 @@ export async function verify<
   client: ConnectedClient | Signer,
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
-  schemeContext?: SchemeContext,
+  config?: X402Config,
 ): Promise<VerifyResponse> {
   if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
@@ -55,14 +55,14 @@ export async function verify<
 
     // svm
     if (SupportedSVMNetworks.includes(paymentRequirements.network)) {
-      return await verifyExactSvm(client as KeyPairSigner, payload, paymentRequirements);
+      return await verifyExactSvm(client as KeyPairSigner, payload, paymentRequirements, config);
     }
   }
 
   if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
-      if (!schemeContext) {
+      if (!config?.schemeContext) {
         return {
           isValid: false,
           invalidReason: "missing_scheme_context",
@@ -73,7 +73,7 @@ export async function verify<
         client as EvmConnectedClient<transport, chain, account>,
         payload,
         paymentRequirements,
-        schemeContext,
+        config?.schemeContext,
       );
       return valid;
     } else {
@@ -102,14 +102,14 @@ export async function verify<
  * @param client - The signer wallet used for blockchain interactions
  * @param payload - The signed payment payload containing transfer parameters and signature
  * @param paymentRequirements - The payment requirements that the payload must satisfy
- * @param schemeContext - Scheme specific context for verification
+ * @param config - Optional configuration for X402 operations (e.g., custom RPC URLs)
  * @returns A SettleResponse indicating if the payment is settled and any settlement reason
  */
 export async function settle<transport extends Transport, chain extends Chain>(
   client: Signer,
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
-  schemeContext?: SchemeContext,
+  config?: X402Config,
 ): Promise<SettleResponse> {
   if (paymentRequirements.scheme == EXACT_SCHEME) {
     payload = ExactPaymentPayloadSchema.parse(payload);
@@ -124,14 +124,14 @@ export async function settle<transport extends Transport, chain extends Chain>(
 
     // svm
     if (SupportedSVMNetworks.includes(paymentRequirements.network)) {
-      return await settleExactSvm(client as KeyPairSigner, payload, paymentRequirements);
+      return await settleExactSvm(client as KeyPairSigner, payload, paymentRequirements, config);
     }
   }
 
   if (paymentRequirements.scheme == DEFERRRED_SCHEME) {
     payload = DeferredPaymentPayloadSchema.parse(payload);
     if (SupportedEVMNetworks.includes(paymentRequirements.network)) {
-      if (!schemeContext) {
+      if (!config?.schemeContext) {
         return {
           success: false,
           errorReason: "missing_scheme_context",
@@ -144,7 +144,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
         client as EvmSignerWallet<chain, transport>,
         payload,
         paymentRequirements,
-        schemeContext,
+        config?.schemeContext,
       );
     } else {
       return {

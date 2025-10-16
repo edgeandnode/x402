@@ -18,6 +18,7 @@ import {
   evm,
   X402RequestSchema,
   DeferredEvmPayloadSchema,
+  type X402Config,
 } from "x402/types";
 import { deferred } from "x402/schemes";
 
@@ -25,6 +26,7 @@ config();
 
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY || "";
 const SVM_PRIVATE_KEY = process.env.SVM_PRIVATE_KEY || "";
+const SVM_RPC_URL = process.env.SVM_RPC_URL || "";
 
 if (!EVM_PRIVATE_KEY && !SVM_PRIVATE_KEY) {
   console.error("Missing required environment variables");
@@ -38,6 +40,16 @@ app.use(express.json());
 
 // Initialize the in-memory voucher store for deferred payments
 const voucherStore = new deferred.evm.InMemoryVoucherStore();
+
+// Create X402 config
+const x402Config: X402Config = {
+  ...(SVM_RPC_URL ? { svmConfig: { rpcUrl: SVM_RPC_URL } } : {}),
+  schemeContext: {
+    deferred: {
+      voucherStore,
+    },
+  },
+};
 
 type VerifyRequest = {
   paymentPayload: PaymentPayload;
@@ -78,9 +90,7 @@ app.post("/verify", async (req: Request, res: Response) => {
     }
 
     // verify
-    const valid = await verify(client, paymentPayload, paymentRequirements, {
-      deferred: { voucherStore },
-    });
+    const valid = await verify(client, paymentPayload, paymentRequirements, x402Config);
     res.json(valid);
   } catch (error) {
     console.error("error", error);
@@ -154,9 +164,7 @@ app.post("/settle", async (req: Request, res: Response) => {
     }
 
     // settle
-    const response = await settle(signer, paymentPayload, paymentRequirements, {
-      deferred: { voucherStore },
-    });
+    const response = await settle(signer, paymentPayload, paymentRequirements, x402Config);
     res.json(response);
   } catch (error) {
     console.error("error", error);
@@ -202,9 +210,7 @@ app.post("/deferred/vouchers", async (req: Request, res: Response) => {
 
     // Verify the voucher
     const client = evm.createConnectedClient(paymentPayload.network);
-    const verifyResponse = await verify(client, paymentPayload, paymentRequirements, {
-      deferred: { voucherStore },
-    });
+    const verifyResponse = await verify(client, paymentPayload, paymentRequirements, x402Config);
 
     if (!verifyResponse.isValid) {
       return res.status(400).json(verifyResponse);

@@ -167,5 +167,3 @@ describe("selectPaymentRequirements", () => {
     expect(selected.asset).toBe(solanaUsdc);
   });
 });
-
-

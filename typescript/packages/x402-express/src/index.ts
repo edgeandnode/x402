@@ -185,6 +185,7 @@ export function paymentMiddleware(
           input: {
             type: "http",
             method: req.method.toUpperCase(),
+            discoverable: discoverable ?? true,
             ...inputSchema,
           },
           output: outputSchema,

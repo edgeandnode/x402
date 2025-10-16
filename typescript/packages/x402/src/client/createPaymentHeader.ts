@@ -5,21 +5,22 @@ import { createPaymentHeader as createPaymentHeaderDeferredEVM } from "../scheme
 import { PaymentRequirements } from "../types/verify";
 import { DEFERRRED_SCHEME } from "../types/verify/schemes/deferred";
 import { EXACT_SCHEME } from "../types/verify/schemes/exact";
+import { X402Config } from "../types/config";
 
 /**
  * Creates a payment header based on the provided client and payment requirements.
- * 
+ *
  * @param client - The signer wallet instance used to create the payment header
  * @param x402Version - The version of the X402 protocol to use
  * @param paymentRequirements - The payment requirements containing scheme and network information
- * @param extraPayload - Extra payload to be included in the payment header creation, scheme dependent interpretation
+ * @param config - Optional configuration for X402 operations (e.g., custom RPC URLs)
  * @returns A promise that resolves to the created payment header string
  */
 export async function createPaymentHeader(
   client: Signer | MultiNetworkSigner,
   x402Version: number,
   paymentRequirements: PaymentRequirements,
-  extraPayload?: Record<string, unknown>,
+  config?: X402Config,
 ): Promise<string> {
   // exact scheme
   if (paymentRequirements.scheme === EXACT_SCHEME) {
@@ -48,6 +49,7 @@ export async function createPaymentHeader(
         svmClient,
         x402Version,
         paymentRequirements,
+        config,
       );
     }
     throw new Error("Unsupported network");
@@ -64,7 +66,7 @@ export async function createPaymentHeader(
       throw new Error("Invalid evm wallet client provided");
     }
 
-    return await createPaymentHeaderDeferredEVM(evmClient, x402Version, paymentRequirements, extraPayload);
+    return await createPaymentHeaderDeferredEVM(evmClient, x402Version, paymentRequirements, config?.extraPayload);
   }
 
   throw new Error("Unsupported scheme");
