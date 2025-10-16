@@ -367,7 +367,7 @@ describe("withDeferredPaymentInterceptor", () => {
       mockWalletClient,
       1,
       validPaymentRequirements[0],
-      extraPayload,
+      { extraPayload },
     );
 
     const actualCall = (mockAxiosClient.request as ReturnType<typeof vi.fn>).mock.calls[0][0];
