@@ -13,13 +13,26 @@ As for write endpoints, they do not require traditional authentication but inste
 
 ## Required APIs
 
-### GET /vouchers/available/:buyer/:seller
+### GET /buyers/:buyer
 
-Returns the most suitable voucher for aggregation between a buyer-seller pair.
+Retrieves buyer data for a specific buyer, including escrow account balance, asset allowance, permit nonce, and the latest available voucher for a particular seller and asset.
+
+**Request Body:**
+```json
+{
+  "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+  "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+  "chainId": 84532
+}
+```
 
 **Response (200 OK):**
 ```json
 {
+  "balance": "10000000",
+  "assetAllowance": "5000000",
+  "assetPermitNonce": "0",
   "voucher": {
     "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
     "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
@@ -30,13 +43,27 @@ Returns the most suitable voucher for aggregation between a buyer-seller pair.
     "nonce": 2,
     "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
     "chainId": 84532,
-    "expiry": 1740759400
-  },
-  "signature": "0x3a2f7e3b..."
+    "expiry": 1740759400,
+    "signature": "0x3a2f7e3b..."
+  }
 }
 ```
 
-**Response (404 Not Found):** No vouchers exist for this pair
+**Response (200 OK - No voucher available):**
+```json
+{
+  "balance": "10000000",
+  "assetAllowance": "5000000",
+  "assetPermitNonce": "0"
+}
+```
+
+**Response (400 Bad Request):**
+```json
+{
+  "error": "Invalid parameters"
+}
+```
 
 ### POST /vouchers
 
@@ -339,43 +366,31 @@ Retrieves settlement history for a voucher.
 }
 ```
 
-### GET /buyers/:buyer/account
 
-Retrieves the escrow account details for a specific buyer, including balance information for a particular seller and asset.
+### GET /vouchers/available/:buyer/:seller
 
-**Request Body:**
-```json
-{
-  "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
-  "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
-  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
-  "chainId": 84532
-}
-```
+Returns the most suitable voucher for aggregation between a buyer-seller pair.
 
 **Response (200 OK):**
 ```json
 {
-  "balance": "10000000",
-  "thawingBalance": "2000000",
-  "availableBalance": "8000000",
-  "thawingUntil": 1740759400,
-  "outstandingVouchers": [
-    {
-      "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
-      "nonce": 3,
-      "valueAggregate": "6000000"
-    }
-  ]
+  "voucher": {
+    "id": "0x9f8d3e4a2c7b9d04dcd11c9f4c2b22b0a6f87671e7b8c3a2ea95b5dbdf4040bc",
+    "buyer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
+    "valueAggregate": "5000000",
+    "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
+    "timestamp": 1740673000,
+    "nonce": 2,
+    "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
+    "chainId": 84532,
+    "expiry": 1740759400
+  },
+  "signature": "0x3a2f7e3b..."
 }
 ```
 
-**Response (400 Bad Request):**
-```json
-{
-  "error": "Invalid parameters"
-}
-```
+**Response (404 Not Found):** No vouchers exist for this pair
 
 ### POST /buyers/:buyer/flush
 
@@ -435,3 +450,4 @@ The flush authorization can be either:
   "payer": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C"
 }
 ```
+
