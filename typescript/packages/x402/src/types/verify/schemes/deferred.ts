@@ -336,9 +336,10 @@ export type DeferredFlushWithAuthorizationResponse = z.infer<
 >;
 
 // x402DeferredAccountDetailsResponse
-export const DeferredAccountDetailsResponseSchema = z.object({
+export const DeferredBuyerDataResponseSchema = z.object({
   balance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
   assetAllowance: z.string().refine(isInteger).refine(hasMaxLength(EvmMaxAtomicUnits)),
   assetPermitNonce: z.string().refine(isBigInt),
+  voucher: DeferredEvmPayloadSignedVoucherSchema.optional(),
 });
-export type DeferredAccountDetailsResponse = z.infer<typeof DeferredAccountDetailsResponseSchema>;
+export type DeferredBuyerDataResponse = z.infer<typeof DeferredBuyerDataResponseSchema>;

@@ -48,16 +48,16 @@ describe("getPaymentRequirementsExtra", () => {
   };
 
   const mockGetAvailableVoucher = vi.fn();
-  const mockGetEscrowAccountDetails = vi.fn();
+  const mockGetBuyerData = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(idModule.generateVoucherId).mockReturnValue(mockVoucherId);
     vi.mocked(useDeferredModule.useDeferredFacilitator).mockReturnValue({
-      getEscrowAccountDetails: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetBuyerData,
     } as unknown as ReturnType<typeof useDeferredModule.useDeferredFacilitator>);
-    // Mock getEscrowAccountDetails to return an error by default (so it doesn't add account info)
-    mockGetEscrowAccountDetails.mockResolvedValue({ error: "not available" });
+    // Mock getBuyerData to return an error by default (so it doesn't add account info)
+    mockGetBuyerData.mockResolvedValue({ error: "not available" });
   });
 
   describe("when no headers are provided", () => {
@@ -88,6 +88,11 @@ describe("getPaymentRequirementsExtra", () => {
 
   describe("when only X-BUYER header is provided", () => {
     it("should return aggregation extra when previous voucher exists", async () => {
+      mockGetBuyerData.mockResolvedValue({
+        balance: "10000000",
+        assetAllowance: "1000000",
+        assetPermitNonce: "0",
+      });
       mockGetAvailableVoucher.mockResolvedValue(mockVoucher);
 
       const result = await getPaymentRequirementsExtra(
@@ -103,6 +108,12 @@ describe("getPaymentRequirementsExtra", () => {
 
       expect(result).toEqual({
         type: "aggregation",
+        account: {
+          balance: "10000000",
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.x402.io",
+        },
         signature: mockSignature,
         voucher: mockVoucher,
       });
@@ -112,6 +123,11 @@ describe("getPaymentRequirementsExtra", () => {
     });
 
     it("should return new voucher extra when no previous voucher exists", async () => {
+      mockGetBuyerData.mockResolvedValue({
+        balance: "10000000",
+        assetAllowance: "1000000",
+        assetPermitNonce: "0",
+      });
       mockGetAvailableVoucher.mockResolvedValue(null);
 
       const result = await getPaymentRequirementsExtra(
@@ -127,6 +143,12 @@ describe("getPaymentRequirementsExtra", () => {
 
       expect(result).toEqual({
         type: "new",
+        account: {
+          balance: "10000000",
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.x402.io",
+        },
         voucher: {
           id: mockVoucherId,
           escrow: mockEscrow,
@@ -151,6 +173,11 @@ describe("getPaymentRequirementsExtra", () => {
         },
       });
 
+      mockGetBuyerData.mockResolvedValue({
+        balance: "10000000",
+        assetAllowance: "1000000",
+        assetPermitNonce: "0",
+      });
       mockGetAvailableVoucher.mockResolvedValue(mockVoucher);
 
       const result = await getPaymentRequirementsExtra(
@@ -166,6 +193,12 @@ describe("getPaymentRequirementsExtra", () => {
 
       expect(result).toEqual({
         type: "aggregation",
+        account: {
+          balance: "10000000",
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.x402.io",
+        },
         signature: mockSignature,
         voucher: mockVoucher,
       });
@@ -218,6 +251,11 @@ describe("getPaymentRequirementsExtra", () => {
         },
       });
 
+      mockGetBuyerData.mockResolvedValue({
+        balance: "10000000",
+        assetAllowance: "1000000",
+        assetPermitNonce: "0",
+      });
       mockGetAvailableVoucher.mockResolvedValue(null);
 
       const result = await getPaymentRequirementsExtra(
@@ -233,6 +271,12 @@ describe("getPaymentRequirementsExtra", () => {
 
       expect(result).toEqual({
         type: "new",
+        account: {
+          balance: "10000000",
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.x402.io",
+        },
         voucher: {
           id: mockVoucherId,
           escrow: mockEscrow,
@@ -260,6 +304,12 @@ describe("getPaymentRequirementsExtra", () => {
         },
       });
 
+      mockGetBuyerData.mockResolvedValue({
+        balance: "10000000",
+        assetAllowance: "1000000",
+        assetPermitNonce: "0",
+      });
+
       const voucherResponse: DeferredEvmPayloadSignedVoucher = {
         ...mockVoucher,
         buyer: differentBuyer,
@@ -279,6 +329,12 @@ describe("getPaymentRequirementsExtra", () => {
 
       expect(result).toEqual({
         type: "aggregation",
+        account: {
+          balance: "10000000",
+          assetAllowance: "1000000",
+          assetPermitNonce: "0",
+          facilitator: "https://facilitator.x402.io",
+        },
         signature: mockSignature,
         voucher: {
           ...mockVoucher,
@@ -297,18 +353,25 @@ describe("getPaymentRequirementsExtra", () => {
     it("should handle getAvailableVoucher throwing an error", async () => {
       mockGetAvailableVoucher.mockRejectedValue(new Error("Database error"));
 
-      await expect(
-        getPaymentRequirementsExtra(
-          undefined,
-          mockBuyer,
-          mockSeller,
-          mockEscrow,
-          mockAsset,
-          mockChainId,
-          { url: "https://facilitator.x402.io" },
-          mockGetAvailableVoucher,
-        ),
-      ).rejects.toThrow("Database error");
+      // When getAvailableVoucher fails, the function catches the error and returns a new voucher
+      const result = await getPaymentRequirementsExtra(
+        undefined,
+        mockBuyer,
+        mockSeller,
+        mockEscrow,
+        mockAsset,
+        mockChainId,
+        { url: "https://facilitator.x402.io" },
+        mockGetAvailableVoucher,
+      );
+
+      expect(result).toEqual({
+        type: "new",
+        voucher: {
+          id: mockVoucherId,
+          escrow: mockEscrow,
+        },
+      });
     });
 
     it("should handle decodePayment throwing an error", async () => {

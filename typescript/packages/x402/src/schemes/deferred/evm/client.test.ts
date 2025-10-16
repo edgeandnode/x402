@@ -715,7 +715,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -740,7 +740,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -760,7 +760,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -802,7 +802,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -829,7 +829,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -853,7 +853,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -873,7 +873,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -894,7 +894,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -930,7 +930,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
@@ -951,7 +951,7 @@ describe("createPaymentExtraPayload", () => {
     });
 
     vi.mocked(useDeferredFacilitator).mockReturnValue({
-      getAccountData: mockGetEscrowAccountDetails,
+      getBuyerData: mockGetEscrowAccountDetails,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 

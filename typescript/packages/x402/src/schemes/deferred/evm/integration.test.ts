@@ -17,7 +17,7 @@ import { createPaymentHeader } from "../../../client";
 
 vi.mock("../../../verify/useDeferred", () => ({
   useDeferredFacilitator: vi.fn().mockReturnValue({
-    getAccountData: vi.fn().mockResolvedValue({
+    getBuyerData: vi.fn().mockResolvedValue({
       balance: "10000000",
       assetAllowance: "1000000",
       assetPermitNonce: "0",
@@ -551,15 +551,15 @@ describe("Deferred Payment Integration Tests", () => {
         },
       } as DeferredPaymentRequirements;
 
-      // Mock facilitator getAccountData call
+      // Mock facilitator getBuyerData call
       const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
-      const mockGetAccountData = vi.fn().mockResolvedValue({
+      const mockGetBuyerData = vi.fn().mockResolvedValue({
         balance: "500", // Confirm low balance
         assetAllowance: "0",
         assetPermitNonce: "0",
       });
       (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
-        getAccountData: mockGetAccountData,
+        getBuyerData: mockGetBuyerData,
       });
 
       // * Step 2: Client automatically generates deposit authorization using createPaymentExtraPayload
@@ -582,7 +582,7 @@ describe("Deferred Payment Integration Tests", () => {
       expect(extraPayload?.depositAuthorization).toBeDefined();
 
       // Verify facilitator was called to check balance
-      expect(mockGetAccountData).toHaveBeenCalledWith(
+      expect(mockGetBuyerData).toHaveBeenCalledWith(
         buyerAddress,
         sellerAddress,
         assetAddress,
@@ -781,13 +781,13 @@ describe("Deferred Payment Integration Tests", () => {
 
       // Mock facilitator call
       const { useDeferredFacilitator } = await import("../../../verify/useDeferred");
-      const mockGetAccountData = vi.fn().mockResolvedValue({
+      const mockGetBuyerData = vi.fn().mockResolvedValue({
         balance: "500",
         assetAllowance: "2000000",
         assetPermitNonce: "0",
       });
       (useDeferredFacilitator as ReturnType<typeof vi.fn>).mockReturnValue({
-        getAccountData: mockGetAccountData,
+        getBuyerData: mockGetBuyerData,
       });
 
       // * Step 2: Generate deposit authorization without permit

@@ -280,33 +280,30 @@ export async function createPaymentExtraPayload(
 
   // Ensure the deposit is actually needed
   // This creates a client/buyer <> facilitator interaction but it's necessary to avoid having to trust the seller
-  const { getAccountData } = useDeferredFacilitator({
+  const { getBuyerData } = useDeferredFacilitator({
     url: extra.account.facilitator as `${string}://${string}`,
   });
-  const accountDetails = await getAccountData(
+  const buyerData = await getBuyerData(
     buyer,
     paymentRequirements.payTo,
     asset,
     extra.voucher.escrow,
     getNetworkId(network),
   );
-  if ("error" in accountDetails) {
+  if ("error" in buyerData) {
     return;
   }
 
   // Re-check balance using the data obtained from the facilitator
-  if (
-    BigInt(accountDetails.balance) >=
-    BigInt(depositConfig.threshold) + BigInt(maxAmountRequired)
-  ) {
+  if (BigInt(buyerData.balance) >= BigInt(depositConfig.threshold) + BigInt(maxAmountRequired)) {
     return;
   }
 
   // Build ERC20 permit if needed
   let signedErc20Permit: DeferredEscrowDepositAuthorizationSignedPermit | undefined;
-  if (BigInt(accountDetails.assetAllowance) < BigInt(depositConfig.amount)) {
+  if (BigInt(buyerData.assetAllowance) < BigInt(depositConfig.amount)) {
     const erc20Permit = {
-      nonce: accountDetails.assetPermitNonce,
+      nonce: buyerData.assetPermitNonce,
       value: depositConfig.amount,
       domain: {
         name: depositConfig.assetDomain.name,

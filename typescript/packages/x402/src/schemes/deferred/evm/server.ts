@@ -35,17 +35,7 @@ export async function getPaymentRequirementsExtra(
     seller: string,
   ) => Promise<DeferredEvmPayloadSignedVoucher | null>,
 ): Promise<PaymentRequirementsExtra> {
-  const { getAccountData, getAvailableVoucher } = useDeferredFacilitator(facilitator);
-  const getAvailableVoucherFacilitator = async (buyer: string, seller: string) => {
-    const result = await getAvailableVoucher(buyer, seller);
-    if ("error" in result) {
-      if (result.error === "voucher_not_found") {
-        return null;
-      }
-      throw new Error(result.error);
-    }
-    return result;
-  };
+  const { getBuyerData } = useDeferredFacilitator(facilitator);
 
   let buyer: Address;
   const newVoucherExtra: PaymentRequirementsExtra = {
@@ -73,16 +63,23 @@ export async function getPaymentRequirementsExtra(
     buyer = xBuyerHeader!; // This is safe due to the previous early return
   }
 
-  // Retrieve account details from facilitator
+  // Retrieve buyer data from facilitator and/or local voucher store
   let balance = "";
   let assetAllowance = "";
   let assetPermitNonce = "";
   let success = false;
+  let previousVoucher: DeferredEvmPayloadSignedVoucher | null = null;
   try {
-    const response = await getAccountData(buyer, seller, asset, escrow, chainId);
+    const response = await getBuyerData(buyer, seller, asset, escrow, chainId);
     if (!("error" in response)) {
       success = true;
       ({ balance, assetAllowance, assetPermitNonce } = response);
+
+      if (getAvailableVoucherLocal == undefined) {
+        previousVoucher = response.voucher ?? null;
+      } else {
+        previousVoucher = await getAvailableVoucherLocal(buyer, seller);
+      }
     }
   } catch (error) {
     console.error(error);
@@ -95,8 +92,6 @@ export async function getPaymentRequirementsExtra(
     facilitator: facilitator.url,
   };
 
-  const getAvailableVoucherFn = getAvailableVoucherLocal ?? getAvailableVoucherFacilitator;
-  const previousVoucher = await getAvailableVoucherFn(buyer, seller);
   if (previousVoucher) {
     return {
       type: "aggregation" as const,

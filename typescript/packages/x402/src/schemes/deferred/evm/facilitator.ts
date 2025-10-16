@@ -18,7 +18,7 @@ import {
 } from "../../../types/verify";
 import { ErrorReasons } from "../../../types/verify/x402Specs";
 import {
-  DeferredAccountDetailsResponse,
+  DeferredBuyerDataResponse,
   DeferredDepositWithAuthorizationResponse,
   DeferredErrorResponse,
   DeferredEscrowDepositAuthorization,
@@ -574,7 +574,7 @@ export async function getAccountData<
   escrow: Address,
   chainId: number,
   voucherStore: VoucherStore,
-): Promise<DeferredAccountDetailsResponse | DeferredErrorResponse> {
+): Promise<DeferredBuyerDataResponse | DeferredErrorResponse> {
   const outstandingVouchers = await voucherStore.getVouchers(
     {
       buyer,

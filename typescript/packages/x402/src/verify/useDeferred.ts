@@ -1,6 +1,6 @@
 import { toJsonSafe } from "../shared/json";
 import {
-  DeferredAccountDetailsResponse,
+  DeferredBuyerDataResponse,
   DeferredErrorResponse,
   DeferredEscrowFlushAuthorizationSigned,
   DeferredFlushWithAuthorizationResponse,
@@ -293,14 +293,14 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
    * @param chainId - The chain ID
    * @returns The balance of the escrow account
    */
-  async function getAccountData(
+  async function getBuyerData(
     buyer: string,
     seller: string,
     asset: string,
     escrow: string,
     chainId: number,
-  ): Promise<DeferredAccountDetailsResponse | DeferredErrorResponse> {
-    const response = await fetch(`${facilitator.url}/deferred/buyers/${buyer}/account`, {
+  ): Promise<DeferredBuyerDataResponse | DeferredErrorResponse> {
+    const response = await fetch(`${facilitator.url}/deferred/buyers/${buyer}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -308,7 +308,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
       body: JSON.stringify({ seller, asset, escrow, chainId }),
     });
     const responseJson = (await response.json()) as
-      | DeferredAccountDetailsResponse
+      | DeferredBuyerDataResponse
       | DeferredErrorResponse;
     if ("error" in responseJson) {
       throw new Error(responseJson.error);
@@ -359,7 +359,7 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     verifyVoucher,
     settleVoucher,
     getVoucherCollections,
-    getAccountData,
+    getBuyerData,
     flushEscrow,
   };
 }
