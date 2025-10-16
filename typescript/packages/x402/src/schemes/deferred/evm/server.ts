@@ -19,7 +19,7 @@ import { useDeferredFacilitator } from "../../../verify/useDeferred";
  * @param asset - The asset address
  * @param chainId - The chain ID
  * @param facilitator - The facilitator URL to get escrow balance from
- * @param getAvailableVoucher - A function to get the latest voucher for a given buyer and seller.
+ * @param getAvailableVoucherLocal - A function to get the latest voucher for a given buyer and seller. If not provided, the facilitator will be used.
  * @returns The extra data for the payment requirements
  */
 export async function getPaymentRequirementsExtra(
@@ -30,12 +30,22 @@ export async function getPaymentRequirementsExtra(
   asset: Address,
   chainId: number,
   facilitator: FacilitatorConfig,
-  getAvailableVoucher: (
+  getAvailableVoucherLocal?: (
     buyer: string,
     seller: string,
   ) => Promise<DeferredEvmPayloadSignedVoucher | null>,
 ): Promise<PaymentRequirementsExtra> {
-  const { getAccountData } = useDeferredFacilitator(facilitator);
+  const { getAccountData, getAvailableVoucher } = useDeferredFacilitator(facilitator);
+  const getAvailableVoucherFacilitator = async (buyer: string, seller: string) => {
+    const result = await getAvailableVoucher(buyer, seller);
+    if ("error" in result) {
+      if (result.error === "voucher_not_found") {
+        return null;
+      }
+      throw new Error(result.error);
+    }
+    return result;
+  };
 
   let buyer: Address;
   const newVoucherExtra: PaymentRequirementsExtra = {
@@ -85,7 +95,8 @@ export async function getPaymentRequirementsExtra(
     facilitator: facilitator.url,
   };
 
-  const previousVoucher = await getAvailableVoucher(buyer, seller);
+  const getAvailableVoucherFn = getAvailableVoucherLocal ?? getAvailableVoucherFacilitator;
+  const previousVoucher = await getAvailableVoucherFn(buyer, seller);
   if (previousVoucher) {
     return {
       type: "aggregation" as const,

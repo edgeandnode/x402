@@ -437,21 +437,6 @@ export function deferredPaymentMiddleware(
   const x402Version = 1;
   const { verify, deferred: deferredFacilitator } = useFacilitator(facilitator);
 
-  // Default voucher store is the facilitator
-  const facilitatorVoucherStore = {
-    getAvailableVoucher: async (buyer: string, seller: string) => {
-      const result = await deferredFacilitator.getAvailableVoucher(buyer, seller);
-      if ("error" in result) {
-        if (result.error === "voucher_not_found") {
-          return null;
-        }
-        throw new Error(result.error);
-      }
-      return result;
-    },
-    storeVoucher: deferredFacilitator.storeVoucher,
-  };
-
   // Pre-compile route patterns to regex and extract verbs
   const routePatterns = computeRoutePatterns(routes);
 
@@ -501,9 +486,7 @@ export function deferredPaymentMiddleware(
           getAddress(asset.address),
           getNetworkId(network),
           facilitator,
-          voucherStore
-            ? voucherStore.getAvailableVoucher
-            : facilitatorVoucherStore.getAvailableVoucher,
+          voucherStore?.getAvailableVoucher,
         ),
       },
     ];
@@ -583,7 +566,7 @@ export function deferredPaymentMiddleware(
     } else {
       try {
         // skip POST /verify and store voucher in facilitator
-        await facilitatorVoucherStore.storeVoucher(decodedPayment, selectedPaymentRequirements);
+        await deferredFacilitator.storeVoucher(decodedPayment, selectedPaymentRequirements);
       } catch (error) {
         console.error(error);
         res.status(402).json({
