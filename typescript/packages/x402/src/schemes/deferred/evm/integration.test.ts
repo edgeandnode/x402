@@ -929,23 +929,6 @@ function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>
         false, // isDepositNonceUsed
       ];
     }
-    // Legacy mocks for backward compatibility
-    if (args.functionName === "getOutstandingAndCollectableAmount") {
-      return [BigInt(1_000_000)];
-    }
-    if (args.functionName === "getAccount") {
-      return {
-        balance: BigInt(10_000_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      };
-    }
-    if (args.functionName === "nonces") {
-      return BigInt(0);
-    }
-    if (args.functionName === "isDepositAuthorizationNonceUsed") {
-      return false;
-    }
     throw new Error(`Unmocked contract read: ${args.functionName}`);
   });
   vi.mocked(wallet.writeContract).mockResolvedValue("0x1234567890abcdef");
@@ -982,26 +965,6 @@ function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>
         false, // isDepositNonceUsed
       ];
     }
-    // Legacy mocks for backward compatibility
-    if (args.functionName === "getOutstandingAndCollectableAmount") {
-      return [BigInt(1_000_000)];
-    }
-    if (args.functionName === "getAccount") {
-      return {
-        balance: BigInt(10_000_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      };
-    }
-    if (args.functionName === "nonces") {
-      return BigInt(0);
-    }
-    if (args.functionName === "isDepositAuthorizationNonceUsed") {
-      return false;
-    }
-    if (args.functionName === "allowance") {
-      return BigInt(10_000_000); // Sufficient allowance for deposits without permit
-    }
     throw new Error(`Unmocked contract read: ${args.functionName}`);
   });
 }
@@ -1022,23 +985,6 @@ function mockBlockchainInteractionsSettleWithDepositAuth(wallet: SignerWallet<Ch
         BigInt(0), // nonce
         false, // isDepositNonceUsed
       ];
-    }
-    // Legacy mocks for backward compatibility
-    if (args.functionName === "getOutstandingAndCollectableAmount") {
-      return [BigInt(1_000_000)];
-    }
-    if (args.functionName === "getAccount") {
-      return {
-        balance: BigInt(10_000_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      };
-    }
-    if (args.functionName === "nonces") {
-      return BigInt(0);
-    }
-    if (args.functionName === "isDepositAuthorizationNonceUsed") {
-      return false;
     }
     throw new Error(`Unmocked contract read: ${args.functionName}`);
   });
@@ -1077,26 +1023,6 @@ function mockBlockchainInteractionsSettleWithDepositAuthNoPermit(
         BigInt(0), // nonce
         false, // isDepositNonceUsed
       ];
-    }
-    // Legacy mocks for backward compatibility
-    if (args.functionName === "getOutstandingAndCollectableAmount") {
-      return [BigInt(1_000_000)];
-    }
-    if (args.functionName === "getAccount") {
-      return {
-        balance: BigInt(10_000_000),
-        thawingAmount: BigInt(0),
-        thawEndTime: BigInt(0),
-      };
-    }
-    if (args.functionName === "nonces") {
-      return BigInt(0);
-    }
-    if (args.functionName === "isDepositAuthorizationNonceUsed") {
-      return false;
-    }
-    if (args.functionName === "allowance") {
-      return BigInt(10_000_000); // Sufficient allowance for deposits without permit
     }
     throw new Error(`Unmocked contract read: ${args.functionName}`);
   });

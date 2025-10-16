@@ -300,11 +300,12 @@ export async function settleVoucher<transport extends Transport, chain extends C
     }
 
     const onchainData = onchainDataResult.data!;
-    const valid = verifyVoucherOnchainState(voucher, undefined, onchainData);
-    if (!valid.isValid) {
+    const voucherOnchainResult = verifyVoucherOnchainState(voucher, undefined, onchainData);
+    if (!voucherOnchainResult.isValid) {
       return {
         success: false,
-        errorReason: valid.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
+        errorReason:
+          voucherOnchainResult.invalidReason ?? "invalid_deferred_evm_payload_no_longer_valid",
         transaction: "",
         payer: voucher.buyer,
       };
