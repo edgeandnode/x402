@@ -917,6 +917,88 @@ describe("useDeferredFacilitator", () => {
     });
   });
 
+  describe("getBuyerData", () => {
+    it("should fetch buyer data successfully with query parameters", async () => {
+      const mockResponse = {
+        balance: "10000000",
+        assetAllowance: "5000000",
+        assetPermitNonce: "3",
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+      const result = await facilitator.getBuyerData(
+        buyerAddress,
+        sellerAddress,
+        assetAddress,
+        escrowAddress,
+        84532,
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${DEFAULT_FACILITATOR_URL}/deferred/buyers/${buyerAddress}?seller=${sellerAddress}&asset=${assetAddress}&escrow=${escrowAddress}&chainId=84532`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    });
+
+    it("should throw error when response contains error field", async () => {
+      const mockErrorResponse = {
+        error: "Buyer data not found",
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockErrorResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
+
+      await expect(
+        facilitator.getBuyerData(buyerAddress, sellerAddress, assetAddress, escrowAddress, 84532),
+      ).rejects.toThrow("Buyer data not found");
+    });
+
+    it("should use custom facilitator URL", async () => {
+      const mockResponse = {
+        balance: "10000000",
+        assetAllowance: "5000000",
+        assetPermitNonce: "3",
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        json: () => Promise.resolve(mockResponse),
+      });
+
+      const facilitator = useDeferredFacilitator({ url: customFacilitatorUrl });
+      const result = await facilitator.getBuyerData(
+        buyerAddress,
+        sellerAddress,
+        assetAddress,
+        escrowAddress,
+        84532,
+      );
+
+      expect(result).toEqual(mockResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${customFacilitatorUrl}/deferred/buyers/${buyerAddress}?seller=${sellerAddress}&asset=${assetAddress}&escrow=${escrowAddress}&chainId=84532`,
+        expect.objectContaining({
+          method: "GET",
+        }),
+      );
+    });
+  });
+
   describe("flushEscrow", () => {
     const mockFlushAuthorization = {
       buyer: buyerAddress,

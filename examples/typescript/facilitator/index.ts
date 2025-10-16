@@ -21,12 +21,14 @@ import {
   type X402Config,
 } from "x402/types";
 import { deferred } from "x402/schemes";
+import { getNetworkName } from "x402/shared";
 
 config();
 
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY || "";
 const SVM_PRIVATE_KEY = process.env.SVM_PRIVATE_KEY || "";
 const SVM_RPC_URL = process.env.SVM_RPC_URL || "";
+const PORT = process.env.PORT || 3000;
 
 if (!EVM_PRIVATE_KEY && !SVM_PRIVATE_KEY) {
   console.error("Missing required environment variables");
@@ -186,17 +188,33 @@ app.get("/deferred/vouchers/:id", async (req: Request, res: Response) => {
   }
 });
 
-// GET /deferred/vouchers/available/:buyer/:seller
-app.get("/deferred/vouchers/available/:buyer/:seller", async (req: Request, res: Response) => {
+// GET /deferred/buyers/:buyer
+app.get("/deferred/buyers/:buyer", async (req: Request, res: Response) => {
   try {
-    const { buyer, seller } = req.params;
-    const voucher = await voucherStore.getAvailableVoucher(buyer, seller);
+    const { buyer } = req.params;
+    const { seller, asset, escrow, chainId } = req.query;
 
-    if (!voucher) {
-      return res.status(404).json({ error: "No vouchers available for this buyer-seller pair" });
+    const network = getNetworkName(parseInt(chainId as string, 10));
+    const client = evm.createConnectedClient(network);
+    const response = await deferred.evm.getAccountData(
+      client,
+      buyer as `0x${string}`,
+      seller as `0x${string}`,
+      asset as `0x${string}`,
+      escrow as `0x${string}`,
+      parseInt(chainId as string, 10),
+      voucherStore,
+    );
+
+    if ("error" in response) {
+      return res.status(404).json({
+        error: response.error,
+      });
     }
 
-    res.json(voucher);
+    const voucher = await voucherStore.getAvailableVoucher(buyer, seller as `0x${string}`);
+
+    res.json({ ...response, voucher: voucher ?? undefined });
   } catch (error) {
     console.error("error", error);
     res.status(400).json({ error: "Invalid request" });
@@ -216,9 +234,31 @@ app.post("/deferred/vouchers", async (req: Request, res: Response) => {
       return res.status(400).json(verifyResponse);
     }
 
-    // Extract and store the voucher
-    const { signature, voucher } = DeferredEvmPayloadSchema.parse(paymentPayload.payload);
+    // Extract voucher
+    const { depositAuthorization, signature, voucher } = DeferredEvmPayloadSchema.parse(
+      paymentPayload.payload,
+    );
     const signedVoucher = { ...voucher, signature };
+
+    // Process deposit authorization
+    if (depositAuthorization) {
+      const network = getNetworkName(voucher.chainId);
+      const signer = evm.createSigner(network, EVM_PRIVATE_KEY as `0x${string}`);
+      const depositResponse = await deferred.evm.depositWithAuthorization(
+        signer,
+        signedVoucher,
+        depositAuthorization,
+        false,
+      ); // Skip reverification - already verified in verify() call above
+      if (!depositResponse.success) {
+        return res.status(400).json({
+          error: depositResponse.errorReason ?? "Unknown deposit authorization error",
+          details: { depositAuthorization },
+        });
+      }
+    }
+
+    // Store the voucher
     const result = await voucherStore.storeVoucher(signedVoucher);
 
     if (!result.success) {
@@ -277,13 +317,11 @@ app.post("/deferred/vouchers/:id/:nonce/settle", async (req: Request, res: Respo
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`Server listening at http://localhost:${process.env.PORT || 3000}`);
+app.listen(PORT, () => {
+  console.log(`Server listening at http://localhost:${PORT}`);
 
+  console.log(`For deferred voucher history: GET http://localhost:${PORT}/deferred/vouchers/:id`);
   console.log(
-    `For deferred voucher history: GET http://localhost:${process.env.PORT || 3000}/deferred/vouchers/:id`,
-  );
-  console.log(
-    `To settle a deferred voucher: POST http://localhost:${process.env.PORT || 3000}/deferred/vouchers/:id/:nonce/settle`,
+    `To settle a deferred voucher: POST http://localhost:${PORT}/deferred/vouchers/:id/:nonce/settle`,
   );
 });

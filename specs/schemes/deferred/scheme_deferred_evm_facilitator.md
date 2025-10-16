@@ -17,14 +17,15 @@ As for write endpoints, they do not require traditional authentication but inste
 
 Retrieves buyer data for a specific buyer, including escrow account balance, asset allowance, permit nonce, and the latest available voucher for a particular seller and asset.
 
-**Request Body:**
-```json
-{
-  "seller": "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D",
-  "asset": "0x081827b8c3aa05287b5aa2bc3051fbe638f33152",
-  "escrow": "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27",
-  "chainId": 84532
-}
+**Query Parameters:**
+- `seller` (required): Seller address (e.g., "0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D")
+- `asset` (required): Asset address (e.g., "0x081827b8c3aa05287b5aa2bc3051fbe638f33152")
+- `escrow` (required): Escrow address (e.g., "0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27")
+- `chainId` (required): Chain ID (e.g., 84532)
+
+**Example Request:**
+```
+GET /buyers/0x209693Bc6afc0C5328bA36FaF03C514EF312287C?seller=0xA1c7Bf3d421e8A54D39FbBE13f9f826E5B2C8e3D&asset=0x081827b8c3aa05287b5aa2bc3051fbe638f33152&escrow=0x7cB1A5A2a2C9e91B76914C0A7b7Fb3AefF3BCA27&chainId=84532
 ```
 
 **Response (200 OK):**

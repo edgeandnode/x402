@@ -300,12 +300,18 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     escrow: string,
     chainId: number,
   ): Promise<DeferredBuyerDataResponse | DeferredErrorResponse> {
-    const response = await fetch(`${facilitator.url}/deferred/buyers/${buyer}`, {
+    const params = new URLSearchParams();
+    params.append("seller", seller);
+    params.append("asset", asset);
+    params.append("escrow", escrow);
+    params.append("chainId", chainId.toString());
+    const queryString = params.toString();
+
+    const response = await fetch(`${facilitator.url}/deferred/buyers/${buyer}?${queryString}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ seller, asset, escrow, chainId }),
     });
     const responseJson = (await response.json()) as
       | DeferredBuyerDataResponse
