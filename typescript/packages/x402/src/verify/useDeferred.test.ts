@@ -1084,11 +1084,10 @@ describe("useDeferredFacilitator", () => {
       });
 
       const facilitator = useDeferredFacilitator({ url: DEFAULT_FACILITATOR_URL });
-      const result = await facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532);
 
-      expect(result).toEqual(mockResponse);
-      expect(result.success).toBe(false);
-      expect(result.errorReason).toBe("invalid_signature");
+      await expect(
+        facilitator.flushEscrow(mockFlushAuthorization, escrowAddress, 84532),
+      ).rejects.toThrow("invalid_signature");
     });
 
     it("should use custom facilitator URL", async () => {

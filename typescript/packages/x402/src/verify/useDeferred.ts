@@ -207,14 +207,16 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     const response = await fetch(`${facilitator.url}/deferred/vouchers/${id}/${nonce}/verify`, {
       method: "POST",
     });
-    const responseJson = await response.json();
+    const responseJson = (await response.json()) as VerifyResponse;
 
-    if (response.status !== 200) {
-      const errorMessage = `Failed to verify voucher: ${response.statusText}`;
+    if (response.status !== 200 || "invalidReason" in responseJson) {
+      const errorMessage =
+        (responseJson as VerifyResponse).invalidReason ||
+        `Failed to verify voucher: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
-    return responseJson as VerifyResponse;
+    return responseJson;
   }
 
   /**
@@ -228,14 +230,14 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     const response = await fetch(`${facilitator.url}/deferred/vouchers/${id}/${nonce}/settle`, {
       method: "POST",
     });
-    const responseJson = await response.json();
+    const responseJson = (await response.json()) as SettleResponse;
 
-    if (response.status !== 200) {
+    if (response.status !== 200 || "errorReason" in responseJson) {
       const errorMessage = `Failed to settle voucher: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 
-    return responseJson as SettleResponse;
+    return responseJson;
   }
 
   /**
@@ -348,8 +350,10 @@ export function useDeferredFacilitator(facilitator: FacilitatorConfig) {
     );
     const responseJson = (await response.json()) as DeferredFlushWithAuthorizationResponse;
 
-    if (response.status !== 200) {
-      const errorMessage = `Failed to flush escrow: ${response.statusText}`;
+    if (response.status !== 200 || "errorReason" in responseJson) {
+      const errorMessage =
+        (responseJson as DeferredFlushWithAuthorizationResponse).errorReason ||
+        `Failed to flush escrow: ${response.statusText}`;
       throw new Error(errorMessage);
     }
 

@@ -923,6 +923,7 @@ function mockBlockchainInteractionsSettle(wallet: SignerWallet<Chain, Transport>
       return [
         BigInt(1_000_000), // voucherOutstanding
         BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // balance
         BigInt(10_000_000), // availableBalance
         BigInt(10_000_000), // allowance
         BigInt(0), // nonce
@@ -959,6 +960,7 @@ function mockBlockchainInteractionsVerify(wallet: SignerWallet<Chain, Transport>
       return [
         BigInt(1_000_000), // voucherOutstanding
         BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // balance
         BigInt(10_000_000), // availableBalance
         BigInt(10_000_000), // allowance
         BigInt(0), // nonce
@@ -980,6 +982,7 @@ function mockBlockchainInteractionsSettleWithDepositAuth(wallet: SignerWallet<Ch
       return [
         BigInt(1_000_000), // voucherOutstanding
         BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // balance
         BigInt(10_000_000), // availableBalance
         BigInt(10_000_000), // allowance
         BigInt(0), // nonce
@@ -1018,6 +1021,7 @@ function mockBlockchainInteractionsSettleWithDepositAuthNoPermit(
       return [
         BigInt(1_000_000), // voucherOutstanding
         BigInt(1_000_000), // voucherCollectable
+        BigInt(10_000_000), // balance
         BigInt(10_000_000), // availableBalance
         BigInt(10_000_000), // allowance
         BigInt(0), // nonce
