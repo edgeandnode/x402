@@ -300,7 +300,7 @@ export async function settleVoucher<transport extends Transport, chain extends C
     }
 
     const onchainData = onchainDataResult.data!;
-    const voucherOnchainResult = verifyVoucherOnchainState(voucher, undefined, onchainData);
+    const voucherOnchainResult = verifyVoucherOnchainState(voucher, undefined, onchainData, true);
     if (!voucherOnchainResult.isValid) {
       return {
         success: false,

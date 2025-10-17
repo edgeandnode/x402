@@ -26,6 +26,7 @@ import { VoucherStore } from "./store";
 export type OnchainVerificationData = {
   voucherOutstanding: bigint;
   voucherCollectable: bigint;
+  balance: bigint;
   availableBalance: bigint;
   allowance: bigint;
   nonce: bigint;
@@ -399,6 +400,7 @@ export async function getOnchainVerificationData<
     const [
       voucherOutstanding,
       voucherCollectable,
+      balance,
       availableBalance,
       allowance,
       permitNonce,
@@ -429,6 +431,7 @@ export async function getOnchainVerificationData<
       data: {
         voucherOutstanding,
         voucherCollectable,
+        balance,
         availableBalance,
         allowance,
         nonce: permitNonce,
@@ -447,20 +450,23 @@ export async function getOnchainVerificationData<
  * Verifies the onchain state allows the payment to be settled. Accepts an optional deposit authorization, treating
  * the associated funds as additional balance in the escrow deposit.
  *
- * - ✅ (on-chain) Verifies the client is connected to the chain specified in the payment requirements
  * - ✅ (on-chain) Verifies buyer has sufficient asset balance
- * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param voucher - The voucher to verify
  * @param depositAuthorization - An already verified deposit authorization, used to consider additional balance to the buyer's account
  * @param onchainData - Pre-fetched onchain verification data
+ * @param ignoreThawing - Whether to consider thawing funds in the escrow account
  * @returns Verification result
  */
 export function verifyVoucherOnchainState(
   voucher: DeferredEvmPayloadVoucher,
   depositAuthorization: DeferredEscrowDepositAuthorization | undefined,
   onchainData: OnchainVerificationData,
+  ignoreThawing: boolean = false,
 ): VerifyResponse {
+  // By default we ignore funds that are thawing, however when settling a voucher those should be considered
+  const balance = ignoreThawing ? onchainData.balance : onchainData.availableBalance;
+
   // If a deposit authorization is provided we consider it as additional balance in the escrow deposit
   // Note that we do not verify the validity of the deposit authorization here
   const authorizationBalance = depositAuthorization
@@ -468,7 +474,7 @@ export function verifyVoucherOnchainState(
     : 0n;
 
   // Verify buyer has sufficient asset balance
-  if (onchainData.availableBalance + authorizationBalance < onchainData.voucherOutstanding) {
+  if (balance + authorizationBalance < onchainData.voucherOutstanding) {
     return {
       isValid: false,
       invalidReason: "insufficient_funds",
@@ -487,7 +493,6 @@ export function verifyVoucherOnchainState(
  * - ✅ (on-chain) Verifies escrow can pull from the buyer's account based on their allowance (or permit)
  * - ✅ (on-chain) If there is a permit, it verifies permit nonce is valid
  * - ✅ (on-chain) Verifies deposit authorization nonce has not been used
- * - ⌛ TODO: Simulate the transaction to ensure it will succeed
  *
  * @param voucher - The voucher to verify
  * @param depositAuthorization - The deposit authorization to verify

@@ -408,6 +408,7 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
    * @param depositAuthNonce The deposit authorization nonce (pass bytes32(0) if not using deposit auth)
    * @return voucherOutstanding Outstanding amount for the voucher
    * @return voucherCollectable Collectable amount for the voucher
+   * @return balance Balance of the escrow account
    * @return availableBalance Available balance (balance minus thawing amount)
    * @return allowance Allowance from asset contract
    * @return nonce Nonce from asset contract
@@ -422,6 +423,7 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
     returns (
       uint256 voucherOutstanding,
       uint256 voucherCollectable,
+      uint256 balance,
       uint256 availableBalance,
       uint256 allowance,
       uint256 nonce,
@@ -434,8 +436,9 @@ contract DeferredPaymentEscrow is ReentrancyGuard, EIP712, IDeferredPaymentEscro
     uint256 alreadyCollected = $.voucherCollected[voucher.buyer][voucher.seller][voucher.asset][voucher.id];
     (voucherOutstanding, voucherCollectable) = _getOutstandingAndCollectableAmount(voucher, alreadyCollected);
 
-    // Get available balance (balance minus thawing amount)
+    // Get balance and available balance (balance minus thawing amount)
     EscrowAccount memory account = $.accounts[voucher.buyer][voucher.seller][voucher.asset];
+    balance = account.balance;
     availableBalance = account.balance - account.thawingAmount;
 
     // Get both allowance and nonce from asset contract

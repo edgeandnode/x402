@@ -410,6 +410,7 @@ interface IDeferredPaymentEscrow {
    * @param depositAuthNonce The deposit authorization nonce (pass bytes32(0) if not using deposit auth)
    * @return voucherOutstanding Outstanding amount for the voucher
    * @return voucherCollectable Collectable amount for the voucher
+   * @return balance Balance of the escrow account
    * @return availableBalance Available balance (balance minus thawing amount)
    * @return allowance Allowance from asset contract
    * @return nonce Nonce from asset contract
@@ -424,6 +425,7 @@ interface IDeferredPaymentEscrow {
     returns (
       uint256 voucherOutstanding,
       uint256 voucherCollectable,
+      uint256 balance,
       uint256 availableBalance,
       uint256 allowance,
       uint256 nonce,

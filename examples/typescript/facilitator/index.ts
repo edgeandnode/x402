@@ -19,6 +19,7 @@ import {
   X402RequestSchema,
   DeferredEvmPayloadSchema,
   type X402Config,
+  DeferredEscrowFlushAuthorizationSignedSchema,
 } from "x402/types";
 import { deferred } from "x402/schemes";
 import { getNetworkName } from "x402/shared";
@@ -61,6 +62,19 @@ type VerifyRequest = {
 type SettleRequest = {
   paymentPayload: PaymentPayload;
   paymentRequirements: PaymentRequirements;
+};
+
+type FlushRequest = {
+  flushAuthorization: {
+    buyer: string;
+    seller?: string;
+    asset?: string;
+    nonce: string;
+    expiry: number;
+    signature: string;
+  };
+  escrow: string;
+  chainId: number;
 };
 
 app.get("/verify", (req: Request, res: Response) => {
@@ -317,6 +331,55 @@ app.post("/deferred/vouchers/:id/:nonce/settle", async (req: Request, res: Respo
   }
 });
 
+// POST /deferred/buyers/:buyer/flush
+app.post("/deferred/buyers/:buyer/flush", async (req: Request, res: Response) => {
+  try {
+    const body: FlushRequest = req.body;
+
+    // Validate request body structure
+    if (!body.flushAuthorization || !body.escrow || !body.chainId) {
+      return res.status(400).json({
+        success: false,
+        errorReason: "invalid_request_missing_fields",
+        transaction: "",
+        payer: "",
+      });
+    }
+
+    // Parse flush authorization
+    const flushAuthorization = DeferredEscrowFlushAuthorizationSignedSchema.parse(
+      body.flushAuthorization,
+    );
+
+    // Get the network from chainId
+    const network = getNetworkName(body.chainId);
+
+    // Create a signer for the network
+    const signer = evm.createSigner(network, EVM_PRIVATE_KEY as `0x${string}`);
+
+    // Call the flush function
+    const response = await deferred.evm.flushWithAuthorization(
+      signer,
+      flushAuthorization,
+      body.escrow as `0x${string}`,
+    );
+
+    if (!response.success) {
+      return res.status(400).json(response);
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("error", error);
+    res.status(400).json({
+      success: false,
+      errorReason: "invalid_request",
+      transaction: "",
+      payer: "",
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening at http://localhost:${PORT}`);
 
@@ -324,4 +387,5 @@ app.listen(PORT, () => {
   console.log(
     `To settle a deferred voucher: POST http://localhost:${PORT}/deferred/vouchers/:id/:nonce/settle`,
   );
+  console.log(`To flush escrow account: POST http://localhost:${PORT}/buyers/:buyer/flush`);
 });

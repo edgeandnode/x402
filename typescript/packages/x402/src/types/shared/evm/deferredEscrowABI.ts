@@ -333,6 +333,7 @@ export const deferredEscrowABI = [
     outputs: [
       { name: "voucherOutstanding", type: "uint256", internalType: "uint256" },
       { name: "voucherCollectable", type: "uint256", internalType: "uint256" },
+      { name: "balance", type: "uint256", internalType: "uint256" },
       { name: "availableBalance", type: "uint256", internalType: "uint256" },
       { name: "allowance", type: "uint256", internalType: "uint256" },
       { name: "nonce", type: "uint256", internalType: "uint256" },
