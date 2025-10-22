@@ -7,10 +7,10 @@ import {
   findMatchingPaymentRequirements,
   findMatchingRoute,
   getNetworkId,
-  getPaywallHtml,
   processPriceToAtomicAmount,
   toJsonSafe,
 } from "x402/shared";
+import { getPaywallHtml } from "x402/paywall";
 import {
   FacilitatorConfig,
   ERC20TokenAmount,
